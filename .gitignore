@@ -3,3 +3,9 @@ __pycache__/
 models/
 *.mlpackage
 .DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.build/

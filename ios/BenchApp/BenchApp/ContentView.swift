@@ -29,11 +29,13 @@ struct ContentView: View {
 			let ptr = mel.dataPointer.bindMemory(to: Float.self, capacity: mel.count)
 			for i in 0..<mel.count { ptr[i] = Float.random(in: -1...1) }
 
-			for i in 1...10 {
+			for i in 1...100 {
 				let t = CACurrentMediaTime()
 				_ = try model.prediction(mel: mel)
 				let ms = (CACurrentMediaTime() - t) * 1000
-				out += String(format: "run %2d: %6.1f ms\n", i, ms)
+				if i % 5 == 0 || i <= 5 {
+					out += String(format: "run %3d: %6.1f ms\n", i, ms)
+				}
 			}
 			log = out
 		} catch {

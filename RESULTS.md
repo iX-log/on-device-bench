@@ -43,3 +43,57 @@ Notes:
   backwards from what mmap/page-cache behavior would predict and needs
   rechecking — possibly a confound in how "warm launch" was triggered, or an
   artifact of sample size (100 runs, single session).
+
+## Session 3 — sustained run, thermal drift
+
+Deviates from standard conditions: device was on charger (power), not
+airplane-mode-relevant but screen was held on at minimum brightness with the
+idle timer disabled for the duration of the run.
+
+12,848 inferences over 600s, whisper-base encoder fp16, iPhone 14 Pro Max.
+Raw data: `results/device-pull/sustained-1788785293.json`.
+
+| Metric | Value |
+|---|---|
+| Load | 2082.9 ms |
+| Model cost | 9.3 MB |
+| Median (all runs) | 46.5 ms |
+| p95 (all runs) | 50.1 ms |
+| First-minute median | 41.8 ms |
+| Last-minute median | 49.4 ms |
+| Drift | +7.7 ms (+18%) |
+
+Thermal state transitions (via `ProcessInfo.thermalState`):
+
+| State | Onset |
+|---|---|
+| Nominal | 0.1 s |
+| Fair | 102.4 s |
+| Serious | 347.4 s |
+
+Caveats:
+
+- Run was on power, not battery. Charging heat likely pulls the thermal
+  transitions earlier than they'd occur on battery — treat these onset times
+  as conservative (i.e. battery-only operation should do at least this well,
+  possibly better). A battery rerun is pending.
+- The sustained summary does not discard the cold first inference the way
+  the quick test does (see session 1). That inflates the first-minute
+  median slightly, which means the true drift is understated relative to
+  what's reported above.
+- Screen was on at minimum brightness with the idle timer disabled for the
+  full 600s, which contributes some heat on top of the inference workload
+  itself.
+
+### Accidental Low Power Mode measurement
+
+Low Power Mode was on and the device was charging — not a clean isolation
+of Low Power Mode alone. Needs a controlled rerun (LPM on/off, off charger,
+otherwise standard conditions) before drawing conclusions.
+
+| Metric | LPM + charging | Baseline |
+|---|---|---|
+| Median | 65.6 ms | 42 ms |
+| Median delta | +56% | — |
+| p95 | 85.4 ms | — |
+| Load | 3376 ms | ~2000 ms |

@@ -97,3 +97,54 @@ otherwise standard conditions) before drawing conclusions.
 | Median delta | +56% | — |
 | p95 | 85.4 ms | — |
 | Load | 3376 ms | ~2000 ms |
+
+## Session 4 — sustained run, battery
+
+Same protocol as session 3, but on battery (standard conditions: off
+charger) instead of on power.
+
+12,561 inferences over 600s, whisper-base encoder fp16, iPhone 14 Pro Max,
+warm launch. Raw data: `results/device-pull/sustained-1788866056.json`.
+
+| Metric | Value |
+|---|---|
+| Load | 137.9 ms |
+| Model cost | 2.8 MB |
+| Median (all runs) | 49.2 ms |
+| p95 (all runs) | 50.7 ms |
+| First-minute median | 41.6 ms |
+| Last-minute median | 49.4 ms |
+| Drift | +7.8 ms (+19%) |
+
+Thermal state transitions (via `ProcessInfo.thermalState`):
+
+| State | Onset |
+|---|---|
+| Fair | 56.2 s |
+| Serious | 101.2 s |
+
+### Comparison: session 4 (battery) vs. session 3 (power)
+
+| Transition | Battery (session 4) | Power (session 3) |
+|---|---|---|
+| Fair | 56.2 s | 102.4 s |
+| Serious | 101.2 s | 347.4 s |
+
+Serious thermal state arrived 3.4x sooner on battery than on power — the
+opposite of what charging heat would predict (session 3's caveats assumed
+charging would pull transitions *earlier*, not later). Two candidate
+explanations, both untested:
+
+- Low battery level may make iOS more thermally conservative independent of
+  actual heat (state-of-charge-driven throttling, not temperature-driven).
+- The two runs may have started from different baseline temperatures
+  (e.g. device history before the run, ambient conditions), confounding
+  the comparison.
+
+Drift held at 18–19% across both runs (+18% on power, +19% on battery),
+so the latency degradation itself is reproducible even though the thermal
+transition timing is not — the two are not as tightly coupled as assumed.
+
+The battery run also completed fewer inferences in the same 600s window
+(12,561 vs. 12,848 on power), consistent with the earlier throttling
+observed above.

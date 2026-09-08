@@ -15,11 +15,23 @@ struct ContentView: View {
 			.padding()
 		}
 		.safeAreaInset(edge: .bottom) {
-			HStack(spacing: 16) {
-				Button("Quick (100)") { Task { await vm.runQuick() } }
-				Button("Sustained (10 min)") { Task { await vm.runSustained() } }
+			VStack(spacing: 12) {
+				Text(vm.selectedModelInfo).monospaced().font(.caption).foregroundStyle(.secondary)
+
+				Picker("Precision", selection: $vm.selected) {
+					ForEach(Precision.allCases) { p in
+						Text(p.label).tag(p)
+					}
+				}
+				.pickerStyle(.segmented)
+				.disabled(vm.isRunning)
+
+				HStack(spacing: 16) {
+					Button("Quick (100)") { Task { await vm.runQuick() } }
+					Button("Sustained (10 min)") { Task { await vm.runSustained() } }
+				}
+				.disabled(vm.isRunning)
 			}
-			.disabled(vm.isRunning)
 			.padding()
 		}
 	}

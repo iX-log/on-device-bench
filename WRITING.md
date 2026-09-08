@@ -14,6 +14,10 @@ Most published Core ML benchmark numbers quietly report load time and inference 
 
 The whole question is whether inference number 13,000 takes longer than inference number 5, because the phone got hot. Nobody publishes this because benchmarks measure sprints, and real usage is a marathon.
 
+## An unverified number survives six days
+
+I quoted the encoder's `.mlpackage` as "145MB on disk" from session 2 through session 4 — six days — before checking it against the actual file. It's 39MB; 145MB was an estimate for the full model, and we only ever converted the encoder. The memory-mapping finding (disk size costs single-digit MB in phys_footprint) still holds, just at the right disk size. Worth remembering: a number that sounds plausible and supports the point you're making is exactly the kind that doesn't get checked.
+
 ## Why Whisper
 
 Speech recognition running locally with no network is the same problem a car has in a tunnel. Offline voice is exactly the constrained-device story I want to be known for — the benchmark and the positioning point the same direction.

@@ -11,12 +11,25 @@ import CoreML
 import UIKit
 import QuartzCore
 
+enum Precision: String, CaseIterable, Identifiable {
+	case fp16, int8, int4
+
+	var id: String { rawValue }
+	var label: String { rawValue }
+}
+
 @MainActor
 @Observable
 final class BenchmarkViewModel {
 	private(set) var log = "ready"
 	private(set) var progress = ""
 	private(set) var isRunning = false
+	var selected: Precision = .fp16
+
+	var selectedModelInfo: String {
+		let url = Self.modelURL(for: selected)
+		return "\(url.lastPathComponent) — \(Memory.mb(Self.directorySize(at: url)))"
+	}
 
 	// MARK: - Public API
 
@@ -80,7 +93,7 @@ final class BenchmarkViewModel {
 				}
 			}
 
-			let url = try RunWriter.write(samples: samples, duration: seconds)
+			let url = try RunWriter.write(samples: samples, duration: seconds, precision: self.selected)
 			self.log = session.header
 				+ SustainedSummary.text(samples: samples, file: url.lastPathComponent)
 			self.progress = ""
@@ -90,8 +103,9 @@ final class BenchmarkViewModel {
 	// MARK: - Internals
 
 	private struct Session {
-		let model: whisper_base_encoder_fp16
-		let input: MLMultiArray
+		/// Abstracts over the three generated model classes, which share no
+		/// base class or protocol — a closure sidesteps that instead of one.
+		let predict: () throws -> Void
 		let header: String
 	}
 
@@ -110,17 +124,53 @@ final class BenchmarkViewModel {
 
 		let config = MLModelConfiguration()
 		config.computeUnits = .all
+		let input = try Self.makeInput()
 
 		let t0 = CACurrentMediaTime()
-		let model = try whisper_base_encoder_fp16(configuration: config)
+		let predict: () throws -> Void
+		switch selected {
+		case .fp16:
+			let model = try whisper_base_encoder_fp16(configuration: config)
+			predict = { _ = try model.prediction(mel: input) }
+		case .int8:
+			let model = try whisper_base_encoder_int8(configuration: config)
+			predict = { _ = try model.prediction(mel: input) }
+		case .int4:
+			let model = try whisper_base_encoder_int4(configuration: config)
+			predict = { _ = try model.prediction(mel: input) }
+		}
 		let loadMs = (CACurrentMediaTime() - t0) * 1000
+		let modelURL = Self.modelURL(for: selected)
 
 		let after = Memory.physFootprint()
 		out += "after load:    \(Memory.mb(after))\n"
 		if let a = before, let b = after { out += "model cost:    \(Memory.mb(b - a))\n" }
-		out += String(format: "load:          %.1f ms\n\n", loadMs)
+		out += String(format: "load:          %.1f ms\n", loadMs)
+		out += "model file:    \(modelURL.lastPathComponent)\n"
+		out += "on disk:       \(Memory.mb(Self.directorySize(at: modelURL)))\n\n"
 
-		return Session(model: model, input: try Self.makeInput(), header: out)
+		return Session(predict: predict, header: out)
+	}
+
+	private static func modelURL(for precision: Precision) -> URL {
+		switch precision {
+		case .fp16: whisper_base_encoder_fp16.urlOfModelInThisBundle
+		case .int8: whisper_base_encoder_int8.urlOfModelInThisBundle
+		case .int4: whisper_base_encoder_int4.urlOfModelInThisBundle
+		}
+	}
+
+	private static func directorySize(at url: URL) -> UInt64 {
+		guard let enumerator = FileManager.default.enumerator(
+			at: url, includingPropertiesForKeys: [.fileSizeKey]
+		) else { return 0 }
+
+		var total: UInt64 = 0
+		for case let fileURL as URL in enumerator {
+			let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+			total += UInt64(size)
+		}
+		return total
 	}
 
 	/// Raw pointer fill — NSNumber subscripting 240k times would cost
@@ -134,7 +184,7 @@ final class BenchmarkViewModel {
 
 	private func timeOneInference(_ s: Session) throws -> Double {
 		let t = CACurrentMediaTime()
-		_ = try s.model.prediction(mel: s.input)
+		try s.predict()
 		return (CACurrentMediaTime() - t) * 1000
 	}
 }

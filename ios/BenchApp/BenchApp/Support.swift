@@ -82,13 +82,13 @@ struct RunFile: Codable {
 }
 
 enum RunWriter {
-	static func write(samples: [Sample], duration: Double) throws -> URL {
+	static func write(samples: [Sample], duration: Double, precision: Precision) throws -> URL {
 		let file = RunFile(
 			started_at: ISO8601DateFormatter().string(from: Date()),
 			device: "iPhone 14 Pro Max (A16, 6GB)",
 			os_version: UIDevice.current.systemVersion,
 			model: "whisper-base encoder",
-			precision: "fp16",
+			precision: precision.rawValue,
 			duration_target_s: duration,
 			notes: "airplane mode, off power, screen on min brightness, idle timer disabled",
 			samples: samples
@@ -96,7 +96,7 @@ enum RunWriter {
 		let enc = JSONEncoder()
 		enc.outputFormatting = .prettyPrinted
 		let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-		let url = dir.appendingPathComponent("sustained-\(Int(Date().timeIntervalSince1970)).json")
+		let url = dir.appendingPathComponent("sustained-\(precision.rawValue)-\(Int(Date().timeIntervalSince1970)).json")
 		try enc.encode(file).write(to: url)
 		return url
 	}

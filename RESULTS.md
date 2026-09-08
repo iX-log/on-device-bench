@@ -33,9 +33,9 @@ computed over runs 2-100 (run 1 discarded as warm-up, per session 1).
 
 Notes:
 
-- The `.mlpackage` is ~145MB on disk but costs single-digit MB in phys_footprint
-  at load — Core ML memory-maps weights rather than copying them into the
-  process's resident set.
+- The `.mlpackage` is 39MB on disk but costs 6-9MB phys_footprint at load —
+  Core ML memory-maps weights rather than copying them into the process's
+  resident set.
 - Warm model cost varies with page cache state: observed anywhere from
   0.1MB to 2.9MB across repeated warm launches, depending on how much of the
   mmap'd weight file the OS still has cached from prior runs.
@@ -148,3 +148,42 @@ transition timing is not — the two are not as tightly coupled as assumed.
 The battery run also completed fewer inferences in the same 600s window
 (12,561 vs. 12,848 on power), consistent with the earlier throttling
 observed above.
+
+## Session 5 — precision comparison (fp16 / int8 / int4)
+
+Quick test (100 runs), whisper-base encoder, iPhone 14 Pro Max. Airplane
+mode, off power. Run 13:37–13:38.
+
+| Metric | fp16 | int8 | int4 |
+|---|---|---|---|
+| Disk size | 39.4 MB | 19.8 MB | 10.0 MB |
+| Load | 22.2 ms (warm) | 1425.2 ms (cold) | 1369.5 ms (cold) |
+| Median inference | 41.8 ms | 41.1 ms | 40.5 ms |
+| p95 inference | 43.3 ms | 42.2 ms | 41.2 ms |
+| Peak footprint | 26.5 MB | 30.1 MB | 29.3 MB |
+
+Finding: a 4x reduction in file size (fp16 → int4) buys only ~3% latency
+improvement (41.8ms → 40.5ms median). At ~20M parameters the encoder is
+likely compute-bound rather than memory-bandwidth-bound, so shrinking the
+weights relieves no bottleneck. Practical guidance: quantize for storage
+and download size, not for speed. Hypothesis to test later: this should
+flip for a larger model, where memory bandwidth is more likely to be the
+constraint.
+
+Caveats:
+
+- fp16 was measured on a warm load while int8 and int4 were cold — the run
+  order was not controlled for this. Rerun all three from the same
+  load state (or with cooling/reinstall between each) before trusting the
+  load-time column or any cross-precision comparison that touches load.
+- "Model cost" (phys_footprint delta at load: 1.6MB fp16, 7.9MB int8,
+  6.9MB int4) bears no relation to file size and reflects page cache state
+  rather than the model itself (see session 2). Dropped from the table
+  above; report peak footprint instead.
+- Conversion-time verification against PyTorch gave a max relative error of
+  7.3% for int8, which exceeded the arbitrary threshold set in the
+  conversion script. That threshold isn't meaningful as a correctness
+  signal: the verification input was random noise, not a real spectrogram,
+  and max relative difference is a worst-single-element metric that a
+  handful of near-zero activations can blow up. Real accuracy numbers need
+  word error rate on real audio — that's week 5.

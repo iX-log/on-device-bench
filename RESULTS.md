@@ -222,3 +222,38 @@ Caveats:
 - `WhisperFeatureExtractor` pads clips shorter than 30s with silence, so if
   this utterance is short, a large fraction of the benchmarked compute was
   silence. Durations need checking before the WER work.
+
+## Session 7 — quantization accuracy (WER on real audio)
+
+Method: 20 LibriSpeech test-clean utterances packed into 7 windows of
+~30s (79.6% real audio, 20.4% padding). Encoder ran on iPhone 14 Pro Max
+at each precision; encoder outputs (`1, 1500, 512` float32) dumped to
+disk, pulled to Mac, decoded with the full-precision PyTorch Whisper
+decoder via `encoder_outputs=`. Scored with `jiwer` after normalization
+(lowercase, strip punctuation, collapse whitespace, expand contractions).
+Aggregate computed over total words, not averaged per window.
+
+| Precision | Disk size | Median inference (session 5) | Aggregate WER |
+|---|---|---|---|
+| fp16 | 39.4 MB | 41.8 ms | 3.4% |
+| int8 | 19.8 MB | 41.1 ms | 3.8% |
+| int4 | 10.0 MB | 40.5 ms | 8.8% |
+
+Per-window WER, fp16: 3.2 / 0.0 / 1.6 / 1.3 / 5.4 / 9.9 / 0.0 %.
+
+Finding: int8 is close to free — half the size for 0.4 points of WER.
+int4 is a bad trade: it buys only ~3% on latency (session 5) and costs
+2.6x the error rate. On an ANE, 4-bit quantization of this model gives
+up substantial accuracy in exchange for download size alone.
+
+Caveats:
+
+- Seven windows is a small sample, and window 5 alone was 9.9% at fp16 —
+  the aggregate is sensitive to individual windows. Expand to 50-100
+  utterances before publishing.
+- Only the encoder is quantized; the decoder ran at full precision in
+  PyTorch. A fully quantized pipeline would likely be worse, so these
+  numbers are optimistic relative to an on-device encoder+decoder setup.
+- Packed multi-speaker windows are not standard LibriSpeech scoring, so
+  absolute WER is not comparable to published Whisper figures — only the
+  comparison between precisions here is valid.

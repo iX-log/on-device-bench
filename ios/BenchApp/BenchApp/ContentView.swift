@@ -32,6 +32,7 @@ struct ContentView: View {
 				HStack(spacing: 16) {
 					Button("Quick (100)") { Task { await vm.runQuick() } }
 					Button("Sustained (10 min)") { Task { await vm.runSustained() } }
+					Button("Dump features") { Task { await vm.dumpFeatures() } }
 				}
 				.disabled(vm.isRunning)
 			}

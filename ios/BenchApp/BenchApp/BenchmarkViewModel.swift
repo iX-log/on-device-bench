@@ -106,6 +106,41 @@ final class BenchmarkViewModel {
 		}
 	}
 
+	/// Runs one inference per packed mel window in the bundle and writes each
+	/// encoder output to Documents as `window-N-{precision}.bin` — flat
+	/// little-endian float32, same convention as the mel .bin inputs.
+	func dumpFeatures() async {
+		await guarded {
+			let filenames = Self.bundledPackedWindowFilenames()
+			guard !filenames.isEmpty else {
+				throw BenchInputError.missingResource("no window*.bin files found in bundle")
+			}
+
+			let config = MLModelConfiguration()
+			config.computeUnits = .all
+			let encode = try Self.loadEncoder(precision: self.selected, config: config)
+
+			let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+			var out = "dumping features (\(self.selected.label)) ...\n"
+
+			for filename in filenames {
+				let input = try Self.makeInput(filename: filename)
+				let hidden = try encode(input) // Float16 storage regardless of precision — upcast below.
+				let shaped = MLShapedArray<Float>(converting: hidden)
+				let data = shaped.withUnsafeShapedBufferPointer { ptr, _, _ in Data(buffer: ptr) }
+
+				let index = Int(filename.dropFirst("window".count)) ?? 0
+				let outName = "window-\(index)-\(self.selected.rawValue).bin"
+				try data.write(to: docsDir.appendingPathComponent(outName))
+
+				out += "  \(filename) -> \(outName)  (\(data.count) bytes)\n"
+			}
+
+			out += "\nwrote \(filenames.count) feature file(s) -> Documents/\n"
+			self.log = out
+		}
+	}
+
 	// MARK: - Internals
 
 	private struct Session {
@@ -144,19 +179,9 @@ final class BenchmarkViewModel {
 		out += "input:         \(inputName.map { "real (\($0))" } ?? "synthetic")\n"
 
 		let t0 = CACurrentMediaTime()
-		let predict: () throws -> Void
-		switch selected {
-		case .fp16:
-			let model = try whisper_base_encoder_fp16(configuration: config)
-			predict = { _ = try model.prediction(mel: input) }
-		case .int8:
-			let model = try whisper_base_encoder_int8(configuration: config)
-			predict = { _ = try model.prediction(mel: input) }
-		case .int4:
-			let model = try whisper_base_encoder_int4(configuration: config)
-			predict = { _ = try model.prediction(mel: input) }
-		}
+		let encode = try Self.loadEncoder(precision: selected, config: config)
 		let loadMs = (CACurrentMediaTime() - t0) * 1000
+		let predict: () throws -> Void = { _ = try encode(input) }
 		let modelURL = Self.modelURL(for: selected)
 
 		let after = Memory.physFootprint()
@@ -167,6 +192,23 @@ final class BenchmarkViewModel {
 		out += "on disk:       \(Memory.mb(Self.directorySize(at: modelURL)))\n\n"
 
 		return Session(predict: predict, header: out)
+	}
+
+	/// Instantiates the model for `precision` and returns a closure running one
+	/// inference. Abstracts over the three generated model classes, which
+	/// share no base class or protocol — see `Session`.
+	private static func loadEncoder(precision: Precision, config: MLModelConfiguration) throws -> (MLMultiArray) throws -> MLMultiArray {
+		switch precision {
+		case .fp16:
+			let model = try whisper_base_encoder_fp16(configuration: config)
+			return { try model.prediction(mel: $0).hidden_states }
+		case .int8:
+			let model = try whisper_base_encoder_int8(configuration: config)
+			return { try model.prediction(mel: $0).hidden_states }
+		case .int4:
+			let model = try whisper_base_encoder_int4(configuration: config)
+			return { try model.prediction(mel: $0).hidden_states }
+		}
 	}
 
 	private static func modelURL(for precision: Precision) -> URL {
@@ -234,6 +276,19 @@ final class BenchmarkViewModel {
 			.map { $0.deletingPathExtension().lastPathComponent }
 			.sorted()
 			.first
+	}
+
+	/// Packed windows (from convert/export_mel_bin_packed.py) also land in the
+	/// bundle root, named `window000.bin`, `window001.bin`, ... — sorted
+	/// lexicographically that's also numeric order since the index is
+	/// zero-padded.
+	private static func bundledPackedWindowFilenames() -> [String] {
+		guard let resourceURL = Bundle.main.resourceURL else { return [] }
+		let files = (try? FileManager.default.contentsOfDirectory(at: resourceURL, includingPropertiesForKeys: nil)) ?? []
+		return files
+			.filter { $0.pathExtension == "bin" && $0.deletingPathExtension().lastPathComponent.hasPrefix("window") }
+			.map { $0.deletingPathExtension().lastPathComponent }
+			.sorted()
 	}
 
 	private func timeOneInference(_ s: Session) throws -> Double {

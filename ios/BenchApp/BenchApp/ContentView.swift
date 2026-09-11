@@ -6,6 +6,9 @@ struct ContentView: View {
 	var body: some View {
 		ScrollView {
 			VStack(alignment: .leading, spacing: 12) {
+				if !vm.ceilingStatus.isEmpty {
+					Text(vm.ceilingStatus).monospaced().font(.caption).foregroundStyle(.secondary)
+				}
 				Text(vm.log).monospaced().font(.caption)
 				if !vm.progress.isEmpty {
 					Text(vm.progress).monospaced().font(.caption).foregroundStyle(.orange)
@@ -35,6 +38,13 @@ struct ContentView: View {
 					Button("Dump features") { Task { await vm.dumpFeatures() } }
 				}
 				.disabled(vm.isRunning)
+
+				HStack(spacing: 16) {
+					Button("Memory ceiling") { Task { await vm.runMemoryCeiling() } }
+						.disabled(vm.isRunning)
+					Button("Clear ceiling data", role: .destructive) { vm.clearCeilingProgress() }
+						.disabled(vm.isRunning)
+				}
 			}
 			.padding()
 		}

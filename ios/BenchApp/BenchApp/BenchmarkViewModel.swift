@@ -29,8 +29,15 @@ final class BenchmarkViewModel {
 	private(set) var log = "ready"
 	private(set) var progress = ""
 	private(set) var isRunning = false
+	private(set) var ceilingStatus = ""
 	var selected: Precision = .fp16
 	var useRealInput = false
+
+	init() {
+		if let last = CeilingWriter.readLast() {
+			ceilingStatus = CeilingWriter.summaryText(last)
+		}
+	}
 
 	var selectedModelInfo: String {
 		let url = Self.modelURL(for: selected)
@@ -139,6 +146,69 @@ final class BenchmarkViewModel {
 			out += "\nwrote \(filenames.count) feature file(s) -> Documents/\n"
 			self.log = out
 		}
+	}
+
+	/// Allocates in 32MB chunks until malloc fails or the OS kills the
+	/// process, memsetting each chunk so every page is genuinely faulted in
+	/// rather than lazily mapped. Progress is fsynced to Documents after
+	/// every chunk since jetsam gives no warning before killing us.
+	func runMemoryCeiling() async {
+		await guarded {
+			var blocks: [UnsafeMutableRawPointer] = []
+			defer { for b in blocks { free(b) } }
+
+			let chunkBytes = CeilingWriter.chunkBytes
+			let startedAt = ISO8601DateFormatter().string(from: Date())
+			let start = CACurrentMediaTime()
+			var samples: [CeilingSample] = []
+			var allocated: UInt64 = 0
+
+			self.log = "memory ceiling: allocating \(Memory.mb(UInt64(chunkBytes)))-chunks...\n"
+
+			while true {
+				guard let ptr = malloc(chunkBytes) else {
+					self.log += "\nmalloc failed at \(Memory.mb(allocated)) — likely at the ceiling.\n"
+					break
+				}
+				memset(ptr, 0xAA, chunkBytes) // touches every byte -> every page resident, not lazily mapped
+				blocks.append(ptr)
+				allocated += UInt64(chunkBytes)
+
+				let sample = CeilingSample(
+					block_index: samples.count,
+					allocated_bytes: allocated,
+					phys_footprint_bytes: Memory.physFootprint() ?? 0,
+					available_bytes: Memory.available(),
+					elapsed_s: CACurrentMediaTime() - start
+				)
+				samples.append(sample)
+
+				CeilingWriter.flush(CeilingProgress(
+					started_at: startedAt,
+					updated_at: ISO8601DateFormatter().string(from: Date()),
+					chunk_bytes: UInt64(chunkBytes),
+					samples: samples
+				))
+
+				self.progress = String(
+					format: "%@ allocated   footprint %@   available %@",
+					Memory.mb(allocated), Memory.mb(sample.phys_footprint_bytes), Memory.mb(sample.available_bytes)
+				)
+				await Task.yield()
+			}
+
+			self.log += "\nstopped at \(Memory.mb(allocated)) across \(samples.count) block(s).\n"
+			self.progress = ""
+			if let last = CeilingWriter.readLast() {
+				self.ceilingStatus = CeilingWriter.summaryText(last)
+			}
+		}
+	}
+
+	func clearCeilingProgress() {
+		CeilingWriter.clear()
+		ceilingStatus = ""
+		log = "cleared ceiling-progress.json\n"
 	}
 
 	// MARK: - Internals

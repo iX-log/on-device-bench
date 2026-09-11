@@ -102,6 +102,65 @@ enum RunWriter {
 	}
 }
 
+// MARK: - Memory Ceiling
+
+struct CeilingSample: Codable {
+	let block_index: Int
+	let allocated_bytes: UInt64
+	let phys_footprint_bytes: UInt64
+	let available_bytes: UInt64
+	let elapsed_s: Double
+}
+
+struct CeilingProgress: Codable {
+	let started_at: String
+	let updated_at: String
+	let chunk_bytes: UInt64
+	let samples: [CeilingSample]
+}
+
+enum CeilingWriter {
+	static let chunkBytes = 32 * 1024 * 1024
+
+	static func fileURL() -> URL {
+		FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+			.appendingPathComponent("ceiling-progress.json")
+	}
+
+	/// Overwrites the progress file and fsyncs before returning. The process
+	/// gets jetsam-killed with no warning as it approaches the ceiling, so
+	/// anything not physically on disk by the time this call returns is lost
+	/// — `Data.write(atomically:)` alone doesn't guarantee that.
+	static func flush(_ progress: CeilingProgress) {
+		guard let data = try? JSONEncoder().encode(progress) else { return }
+		let fd = open(fileURL().path, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
+		guard fd >= 0 else { return }
+		defer { close(fd) }
+		data.withUnsafeBytes { raw in
+			_ = raw.baseAddress.map { write(fd, $0, raw.count) }
+		}
+		fsync(fd)
+	}
+
+	static func readLast() -> CeilingProgress? {
+		guard let data = try? Data(contentsOf: fileURL()) else { return nil }
+		return try? JSONDecoder().decode(CeilingProgress.self, from: data)
+	}
+
+	static func clear() {
+		try? FileManager.default.removeItem(at: fileURL())
+	}
+
+	static func summaryText(_ progress: CeilingProgress) -> String {
+		guard let last = progress.samples.last else { return "" }
+		var out = "last memory ceiling probe — \(progress.updated_at)\n"
+		out += "  blocks:      \(last.block_index + 1)  (\(Memory.mb(last.allocated_bytes)) allocated)\n"
+		out += "  footprint:   \(Memory.mb(last.phys_footprint_bytes))\n"
+		out += "  available:   \(Memory.mb(last.available_bytes))\n"
+		return out
+	}
+}
+
 // MARK: - Summary
 
 enum SustainedSummary {

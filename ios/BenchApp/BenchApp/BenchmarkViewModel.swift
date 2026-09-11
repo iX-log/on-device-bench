@@ -18,6 +18,11 @@ enum Precision: String, CaseIterable, Identifiable {
 	var label: String { rawValue }
 }
 
+enum BenchInputError: Error {
+	case missingResource(String)
+	case sizeMismatch(String)
+}
+
 @MainActor
 @Observable
 final class BenchmarkViewModel {
@@ -25,6 +30,7 @@ final class BenchmarkViewModel {
 	private(set) var progress = ""
 	private(set) var isRunning = false
 	var selected: Precision = .fp16
+	var useRealInput = false
 
 	var selectedModelInfo: String {
 		let url = Self.modelURL(for: selected)
@@ -124,7 +130,18 @@ final class BenchmarkViewModel {
 
 		let config = MLModelConfiguration()
 		config.computeUnits = .all
-		let input = try Self.makeInput()
+
+		let inputName: String?
+		if useRealInput {
+			guard let name = Self.firstBundledMelFilename() else {
+				throw BenchInputError.missingResource("no .bin files found in bundle mel/")
+			}
+			inputName = name
+		} else {
+			inputName = nil
+		}
+		let input = try Self.makeInput(filename: inputName)
+		out += "input:         \(inputName.map { "real (\($0))" } ?? "synthetic")\n"
 
 		let t0 = CACurrentMediaTime()
 		let predict: () throws -> Void
@@ -173,13 +190,50 @@ final class BenchmarkViewModel {
 		return total
 	}
 
-	/// Raw pointer fill — NSNumber subscripting 240k times would cost
+	/// Raw pointer fill/copy — NSNumber subscripting 240k times would cost
 	/// more than the inference we're trying to measure.
-	private static func makeInput() throws -> MLMultiArray {
+	///
+	/// With `filename` nil, fills with random noise (synthetic). Otherwise
+	/// loads `<filename>.bin` — a flat little-endian float32 dump from
+	/// convert/export_mel_bin.py — via memcpy. The `mel/` source folder is a
+	/// synchronized group, so Xcode flattens it into the bundle root rather
+	/// than preserving it as a subdirectory — look up resources with no
+	/// `subdirectory:` accordingly.
+	private static func makeInput(filename: String? = nil) throws -> MLMultiArray {
 		let mel = try MLMultiArray(shape: [1, 80, 3000], dataType: .float32)
 		let ptr = mel.dataPointer.bindMemory(to: Float.self, capacity: mel.count)
-		for i in 0..<mel.count { ptr[i] = Float.random(in: -1...1) }
+
+		guard let filename else {
+			for i in 0..<mel.count { ptr[i] = Float.random(in: -1...1) }
+			return mel
+		}
+
+		guard let url = Bundle.main.url(forResource: filename, withExtension: "bin") else {
+			throw BenchInputError.missingResource("\(filename).bin")
+		}
+		let data = try Data(contentsOf: url)
+		let expectedBytes = mel.count * MemoryLayout<Float>.size
+		guard data.count == expectedBytes else {
+			throw BenchInputError.sizeMismatch("\(filename).bin: expected \(expectedBytes) bytes, got \(data.count)")
+		}
+		data.withUnsafeBytes { raw in
+			memcpy(ptr, raw.baseAddress!, expectedBytes)
+		}
 		return mel
+	}
+
+	/// Mel .bin files land alongside everything else in the bundle root
+	/// (see `makeInput`), so this only picks up top-level `.bin` entries —
+	/// the compiled models' internal `weight.bin`/`coremldata.bin` sit one
+	/// level down inside their `.mlmodelc` directories and aren't listed here.
+	private static func firstBundledMelFilename() -> String? {
+		guard let resourceURL = Bundle.main.resourceURL else { return nil }
+		let files = (try? FileManager.default.contentsOfDirectory(at: resourceURL, includingPropertiesForKeys: nil)) ?? []
+		return files
+			.filter { $0.pathExtension == "bin" }
+			.map { $0.deletingPathExtension().lastPathComponent }
+			.sorted()
+			.first
 	}
 
 	private func timeOneInference(_ s: Session) throws -> Double {

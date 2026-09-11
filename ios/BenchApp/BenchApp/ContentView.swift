@@ -26,6 +26,9 @@ struct ContentView: View {
 				.pickerStyle(.segmented)
 				.disabled(vm.isRunning)
 
+				Toggle("Real input (LibriSpeech mel)", isOn: $vm.useRealInput)
+					.disabled(vm.isRunning)
+
 				HStack(spacing: 16) {
 					Button("Quick (100)") { Task { await vm.runQuick() } }
 					Button("Sustained (10 min)") { Task { await vm.runSustained() } }

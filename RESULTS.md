@@ -187,3 +187,38 @@ Caveats:
   and max relative difference is a worst-single-element metric that a
   handful of near-zero activations can blow up. Real accuracy numbers need
   word error rate on real audio — that's week 5.
+
+## Session 6 — input validity check (synthetic vs. real)
+
+fp16 only, Quick test (100 runs), iPhone 14 Pro Max. Airplane mode, off
+power. Both runs back to back at 10:30.
+
+| Metric | Synthetic (`Float.random`) | Real (LibriSpeech mel, 6930-75918-0000) |
+|---|---|---|
+| Median | 43.0 ms | 42.9 ms |
+| p95 | 44.2 ms | 43.8 ms |
+| Min | 42.5 ms | 42.1 ms |
+| Max | 44.8 ms | 47.1 ms |
+| Peak footprint | 21.0 MB | 23.7 MB |
+
+Finding: input distribution does not affect ANE throughput for this model.
+The 0.1ms difference in median is well inside run-to-run variance. This
+validates every latency number recorded since session 0 — synthetic input
+is a legitimate shortcut for timing work, now verified rather than assumed.
+
+Scope the claim carefully: this holds for timing only. It says nothing
+about quantization error, where activation distribution matters a great
+deal. The 7.3% max relative error measured for int8 at conversion time
+(session 5) used random noise and remains unverified against real audio —
+WER will settle that.
+
+Caveats:
+
+- Tested on fp16 only, not int8 or int4.
+- The real-input run showed run 1 (cold) at 69.6ms vs. 50.1ms for synthetic
+  — likely first-read of the `.bin` from disk rather than inference. It's
+  discarded from the statistics either way (see session 1 warm-up
+  convention).
+- `WhisperFeatureExtractor` pads clips shorter than 30s with silence, so if
+  this utterance is short, a large fraction of the benchmarked compute was
+  silence. Durations need checking before the WER work.

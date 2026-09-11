@@ -2,6 +2,7 @@
 __pycache__/
 models/
 *.mlpackage
+data/
 .DS_Store
 
 # Xcode

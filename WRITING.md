@@ -24,6 +24,12 @@ On the 10-minute battery run, mean was 47.76ms but median was 49.2ms — the mea
 
 The stdev of 3.2ms sounds tight but it's describing two different machines averaged together. The point: on a sustained run the population changes underneath you, so no single summary statistic is meaningful — report first minute and last minute separately. For contrast, the same model over 100 runs in four seconds had a spread under 1ms, because the phone never left one thermal state. Same model, same device, completely different distributions depending only on how long you ran it.
 
+## The summary said slope, the chart said cliff
+
+The sustained-run summary reported first minute 41.8ms, last minute 49.4ms, drift +18%. That reads as gradual degradation. Plotting the same 12,848 samples showed something else entirely — flat until 102 seconds, then a near-vertical step, then a plateau. Same data, opposite mental model, and completely different advice for anyone building an app: "expect a slow creep" versus "expect a cliff at ~100s, budget for the state change, not the average."
+
+Publish raw data alongside summary numbers. Any statistic that collapses a time series into one figure can hide the shape that actually matters — pairs with "One number can't describe a sustained run" above: both are cases where the honest summary was still the wrong summary.
+
 ## Why Whisper
 
 Speech recognition running locally with no network is the same problem a car has in a tunnel. Offline voice is exactly the constrained-device story I want to be known for — the benchmark and the positioning point the same direction.

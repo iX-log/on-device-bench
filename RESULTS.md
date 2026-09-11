@@ -257,3 +257,41 @@ Caveats:
 - Packed multi-speaker windows are not standard LibriSpeech scoring, so
   absolute WER is not comparable to published Whisper figures — only the
   comparison between precisions here is valid.
+
+## Session 8 — charting the sustained runs: cliff, not slope
+
+Charted the two session 3/4 sustained runs from raw JSON.
+Charts: `results/charts/sustained-1788785293.png` (power),
+`results/charts/sustained-1788866056.png` (battery),
+`results/charts/sustained_comparison.png` (overlay).
+
+Revised finding: the thermal degradation is a cliff, not a slope. Latency
+holds flat at ~41.7ms until roughly 102 seconds, then steps near-vertically
+to a plateau. The session 3/4 framing of "+18% drift over ten minutes" is
+arithmetically accurate but misleading — it describes the run as a gradual
+decline when the phone actually spends most of the ten minutes flat on a
+plateau, with one sharp transition. Practical statement: you get about
+100 seconds at full speed, then you're on a different machine.
+
+Both runs step at almost exactly 102s despite different power conditions
+(battery vs. on-charger), so the cliff location is a property of the
+thermal envelope, not the power condition — a conclusion more robust than
+either run alone supported.
+
+This resolves the open thermal-timing caveat from session 4. There,
+`ProcessInfo.thermalState` reported "serious" at 101s on battery vs. 347s
+on power — a 3.4x difference that looked like it needed explaining. The
+charts show the actual latency cliff landed in the same place (~102s)
+both times. The variance was in the *reported* thermal state, not in the
+hardware's actual behavior — `thermalState` is a poor predictor of actual
+throttling and shouldn't be used to anticipate performance.
+
+Secondary observations:
+
+- The on-power run shows two plateaus: ~46ms for about four minutes, then
+  a second step to ~49.4ms. The battery run skips the intermediate step
+  and goes straight to ~49.5ms. Charging bought an intermediate step
+  rather than a delay in reaching the same endpoint.
+- The excursions around 270s and 520s (on-power run) appear in the scatter
+  as dense bands of consecutive slow runs, not isolated outliers — i.e.
+  sustained sub-plateaus, not noise.

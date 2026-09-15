@@ -295,3 +295,38 @@ Secondary observations:
 - The excursions around 270s and 520s (on-power run) appear in the scatter
   as dense bands of consecutive slow runs, not isolated outliers — i.e.
   sustained sub-plateaus, not noise.
+
+## Session 9 — memory ceiling probe
+
+iPhone 14 Pro Max (A16, 6GB), iOS 27.0. Airplane mode, off power, all
+other apps closed. Allocated in 32MB blocks; progress fsync'd to disk
+after each block since jetsam kills the process without warning.
+
+| Run | Blocks | Allocated | Footprint at kill | Available at kill |
+|---|---|---|---|---|
+| 1 | 95 | 3040.0 MB | 3061.6 MB | 10.4 MB |
+| 2 | 95 | 3040.0 MB | 3061.7 MB | 10.3 MB |
+| 3 | 95 | 3040.0 MB | 3061.7 MB | 10.3 MB |
+
+Finding: the jetsam ceiling on a 6GB A16 is approximately 3060MB — half
+the device RAM, not most of it. Three runs agreed to within 0.1MB, so
+this is a fixed budget rather than something that drifts with system
+pressure.
+
+Second finding: `os_proc_available_memory()` is reliable. It counted down
+to ~10MB and the kill landed there, with no phantom headroom reported.
+Apps can budget against it directly.
+
+Practical implication: with the whisper-base encoder fp16 costing ~8MB of
+footprint (session 2), there is substantial headroom under this ceiling.
+A 3B-parameter model at int8 would be roughly 3GB of weights and would sit
+right at the limit.
+
+Note: 3040MB allocated vs. 3061.7MB footprint — the ~21MB gap is the app
+itself plus allocator overhead.
+
+Caveat: this measures a foreground app aggressively allocating with
+nothing else running and no response to memory warnings. Jetsam
+prioritizes differently for apps that release memory under pressure, and
+under system-wide memory pressure from other apps. Treat 3060MB as an
+optimistic upper bound, not a guaranteed budget.

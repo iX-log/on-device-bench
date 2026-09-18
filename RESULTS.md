@@ -1,12 +1,16 @@
 # Results
 
+See [README.md](README.md) for what this project is and why.
+
 Measured numbers, with the exact conditions that produced them. If a number
 here can't be reproduced under the same conditions, treat it as wrong.
 
 ## Device & model
 
 - Device: iPhone 14 Pro Max, A16 Bionic, 6GB RAM, iOS 27.0
-- Model: whisper-base encoder, fp16, Core ML, fixed 30s input (`[1, 80, 3000]` mel)
+- Model: whisper-base encoder, Core ML, fixed 30s input (`[1, 80, 3000]` mel).
+  fp16 is the baseline precision throughout; int8 and int4 variants are
+  also measured (sessions 5 and 7).
 
 ## Standard conditions
 
@@ -17,6 +21,54 @@ Unless a session notes otherwise, every run below was collected with:
 - Cooled 5 minutes before the run (no back-to-back thermal carryover)
 - App launched fresh from the home screen (not resumed from Xcode)
 - No debugger attached
+
+## Session 0 — Core ML conversion
+
+Converted the whisper-base encoder to Core ML fp16 on a MacBook M4 via
+`coremltools`, verified against the PyTorch original (commit `01a840a`).
+
+The commit log didn't record the verification numbers, so these are from
+a reverification run on 2026-09-15, not the original 2026-09-04
+conversion:
+
+| Metric | Value |
+|---|---|
+| Output shape | (1, 1500, 512) |
+| Max abs diff | 0.231567 |
+| Mean abs diff | 0.002321 |
+| Max rel diff | 0.009809 |
+
+Note: `torch.jit.trace` freezes the input shape, so the converted model
+accepts exactly 30s of audio and nothing else.
+
+Caveat: verification uses a random dummy input, so these figures vary
+slightly between runs. The original Sept 4 conversion is not recorded in
+any file — per this project's own conversation log (not a committed run),
+it measured ~0.0083 max relative difference, consistent with the 0.009809
+measured here, but that figure should be treated as anecdotal until a run
+log exists for it.
+
+## Session 1 — first physical-device baseline
+
+100 runs, airplane mode, off power (commit `005d46b`).
+
+| Metric | Value |
+|---|---|
+| Load | 2046 ms |
+| Steady-state median | ~42 ms |
+
+Finding: establishes the warm-up convention used throughout this
+document — run 1 is discarded as warm-up, not more; runs 2-100 are
+counted.
+
+Caveat: no exact steady-state figure was ever recorded for this session.
+This app version printed per-run timings without computing any
+statistics, so ~42ms was estimated by inspection from the printed
+output, not calculated. Median and percentile computation was added in
+session 2.
+
+Caveat: an earlier, non-standard-conditions measurement taken the prior
+day on a charging phone read ~20% slower than this baseline.
 
 ## Session 2 — memory instrumentation, cold vs. warm
 
@@ -46,9 +98,9 @@ Notes:
 
 ## Session 3 — sustained run, thermal drift
 
-Deviates from standard conditions: device was on charger (power), not
-airplane-mode-relevant but screen was held on at minimum brightness with the
-idle timer disabled for the duration of the run.
+Deviates from standard conditions: device was on charger (power), not off
+charger. Additionally, screen was held on at minimum brightness with the
+idle timer disabled for the full 600s duration of the run.
 
 12,848 inferences over 600s, whisper-base encoder fp16, iPhone 14 Pro Max.
 Raw data: `results/device-pull/sustained-1788785293.json`.
@@ -73,10 +125,15 @@ Thermal state transitions (via `ProcessInfo.thermalState`):
 
 Caveats:
 
-- Run was on power, not battery. Charging heat likely pulls the thermal
-  transitions earlier than they'd occur on battery — treat these onset times
-  as conservative (i.e. battery-only operation should do at least this well,
-  possibly better). A battery rerun is pending.
+- Run was on power, not battery. At the time, the assumption was that
+  charging heat would pull the thermal transitions earlier than they'd
+  occur on battery, making these onset times conservative (i.e.
+  battery-only operation should do at least this well, possibly better).
+  A battery rerun is pending. (It found the opposite: session 4 measured
+  transitions arriving earlier on battery, not later. Session 8 then
+  showed why the comparison didn't mean what it looked like — the actual
+  latency cliff landed at ~102s in both runs regardless of power
+  condition; only the reported `thermalState` timing differed.)
 - The sustained summary does not discard the cold first inference the way
   the quick test does (see session 1). That inflates the first-minute
   median slightly, which means the true drift is understated relative to
@@ -141,6 +198,10 @@ explanations, both untested:
   (e.g. device history before the run, ambient conditions), confounding
   the comparison.
 
+(Closed in session 8: the actual latency cliff landed at ~102s in both
+runs regardless of power condition — the variance was in the reported
+`thermalState`, not the hardware.)
+
 Drift held at 18–19% across both runs (+18% on power, +19% on battery),
 so the latency degradation itself is reproducible even though the thermal
 transition timing is not — the two are not as tightly coupled as assumed.
@@ -186,7 +247,7 @@ Caveats:
   signal: the verification input was random noise, not a real spectrogram,
   and max relative difference is a worst-single-element metric that a
   handful of near-zero activations can blow up. Real accuracy numbers need
-  word error rate on real audio — that's week 5.
+  word error rate on real audio — measured in session 7.
 
 ## Session 6 — input validity check (synthetic vs. real)
 
@@ -210,7 +271,7 @@ Scope the claim carefully: this holds for timing only. It says nothing
 about quantization error, where activation distribution matters a great
 deal. The 7.3% max relative error measured for int8 at conversion time
 (session 5) used random noise and remains unverified against real audio —
-WER will settle that.
+settled in session 7 (aggregate WER 3.4% fp16, 3.8% int8, 8.8% int4).
 
 Caveats:
 
@@ -221,7 +282,9 @@ Caveats:
   convention).
 - `WhisperFeatureExtractor` pads clips shorter than 30s with silence, so if
   this utterance is short, a large fraction of the benchmarked compute was
-  silence. Durations need checking before the WER work.
+  silence. Checked: median utterance duration was 6.27s, so 72.6% of each
+  30s window was silence padding — this is why session 7 packs multiple
+  utterances into each window instead, reaching 79.6% real audio.
 
 ## Session 7 — quantization accuracy (WER on real audio)
 
@@ -232,6 +295,8 @@ disk, pulled to Mac, decoded with the full-precision PyTorch Whisper
 decoder via `encoder_outputs=`. Scored with `jiwer` after normalization
 (lowercase, strip punctuation, collapse whitespace, expand contractions).
 Aggregate computed over total words, not averaged per window.
+
+![Bar chart of disk size (fp16 39.4MB, int8 19.8MB, int4 10.0MB) against a line of aggregate WER (fp16 3.4%, int8 3.8%, int4 8.8%) on a zero-based right axis, showing int8 barely raises WER while int4 nearly triples it for a further 2x size reduction](results/charts/quantization-tradeoff.png)
 
 | Precision | Disk size | Median inference (session 5) | Aggregate WER |
 |---|---|---|---|
@@ -261,9 +326,18 @@ Caveats:
 ## Session 8 — charting the sustained runs: cliff, not slope
 
 Charted the two session 3/4 sustained runs from raw JSON.
-Charts: `results/charts/sustained-1788785293.png` (power),
-`results/charts/sustained-1788866056.png` (battery),
-`results/charts/sustained_comparison.png` (overlay).
+
+![Overlay of both sustained runs showing latency flat at ~41.7ms then stepping near-vertically to a plateau at ~102 seconds on both battery and power](results/charts/sustained_comparison.png)
+
+Overlay: battery (session 4) and power (session 3) runs plotted together — both show the same near-vertical latency step at ~102s despite different power conditions.
+
+![Power (on-charger) sustained run: latency flat then a step near 102s, followed by two plateaus](results/charts/sustained-1788785293.png)
+
+Session 3 (power) — the on-charger run, showing the two-plateau shape.
+
+![Battery sustained run: latency flat then a step near 102s to a single plateau](results/charts/sustained-1788866056.png)
+
+Session 4 (battery) — the off-charger run, stepping straight to one plateau.
 
 Revised finding: the thermal degradation is a cliff, not a slope. Latency
 holds flat at ~41.7ms until roughly 102 seconds, then steps near-vertically
@@ -307,6 +381,10 @@ after each block since jetsam kills the process without warning.
 | 1 | 95 | 3040.0 MB | 3061.6 MB | 10.4 MB |
 | 2 | 95 | 3040.0 MB | 3061.7 MB | 10.3 MB |
 | 3 | 95 | 3040.0 MB | 3061.7 MB | 10.3 MB |
+
+![The app relaunched after jetsam killed it, displaying the last fsync'd state: 95 blocks, 3040MB allocated, 3061.7MB footprint, 10.3MB available](results/screenshots/memory-ceiling-after-kill.png)
+
+The app cannot report this itself at the moment of death — that's why progress is flushed to disk after every block.
 
 Finding: the jetsam ceiling on a 6GB A16 is approximately 3060MB — half
 the device RAM, not most of it. Three runs agreed to within 0.1MB, so

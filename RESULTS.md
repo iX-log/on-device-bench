@@ -22,6 +22,11 @@ Unless a session notes otherwise, every run below was collected with:
 - App launched fresh from the home screen (not resumed from Xcode)
 - No debugger attached
 
+Caveat: "cooled 5 minutes" is a fixed wall-clock wait, not a verified
+thermal state. No session checks `thermalState` or device temperature
+before starting a run, so a run could begin already partway into a
+non-nominal state without anything here catching it.
+
 ## Session 0 — Core ML conversion
 
 Converted the whisper-base encoder to Core ML fp16 on a MacBook M4 via
@@ -197,6 +202,9 @@ explanations, both untested:
 - The two runs may have started from different baseline temperatures
   (e.g. device history before the run, ambient conditions), confounding
   the comparison.
+- Neither this run nor session 3 recorded starting battery charge level
+  or ambient/device temperature, so neither hypothesis above could
+  actually be tested from the data collected.
 
 (Closed in session 8: the actual latency cliff landed at ~102s in both
 runs regardless of power condition — the variance was in the reported
@@ -248,6 +256,11 @@ Caveats:
   and max relative difference is a worst-single-element metric that a
   handful of near-zero activations can blow up. Real accuracy numbers need
   word error rate on real audio — measured in session 7.
+- Compute unit is fixed to `.all` (ANE/GPU/CPU together) in every run.
+  No test here isolates which unit actually executes the quantized ops,
+  so the compute-bound explanation above is inferred from the latency
+  numbers, not confirmed with a layer trace (parked as future work in
+  IDEAS.md).
 
 ## Session 6 — input validity check (synthetic vs. real)
 

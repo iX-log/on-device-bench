@@ -21,10 +21,14 @@ be described as "coming to" vs. already shipping.
 
 ## iOS Conf SG
 
-**Title:** Attention Is All You Need. 100 Seconds Is All You Get.
+**Title:** You Get 100 Seconds: What Actually Runs on an iPhone
 
 **Abstract:**
 
+> Apple Intelligence put on-device models in front of every iOS developer,
+> and almost nobody has measured what the hardware actually does when you
+> run one.
+>
 > You want to ship an AI model in your iPhone app. Can you? I couldn't
 > find a straight answer anywhere, so I measured it: 25,000 inferences of
 > Whisper's encoder on a physical iPhone under controlled conditions, with
@@ -51,6 +55,16 @@ be described as "coming to" vs. already shipping.
 
 To verify before submitting: that 25,000 is right (12,848 + 12,561 from
 the two sustained runs, plus the quick tests, if anything conservative).
+
+**How attendees can apply this:** Use int8 over int4 unless you need
+every last point of accuracy. Load models at launch, not on first use,
+so the multi-second compile happens before anyone's waiting on it. And
+stop branching app behavior on `ProcessInfo.thermalState`: it doesn't
+track the actual slowdown.
+
+**Logistics:** Regular talk (~25 min). Audience level: all levels.
+Travel assistance: yes (Munich to Singapore). Links:
+https://github.com/iX-log/on-device-bench
 
 ## Arctic Conference
 

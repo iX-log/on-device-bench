@@ -19,13 +19,13 @@ example.
 
 ## What this means for your app
 
-- Use int8, not int4. Half the download for 0.4 points of WER. int4 halves it again but nearly triples errors and buys almost no speed.
-- Load the model at launch, not on first use. First load after install is ~2s of on-device compilation; every launch after is ~135ms. Lazy loading on first tap is a two-second stall that looks like a bug.
-- Don't size models against file size. A 39MB .mlpackage costs 6–9MB of footprint. Core ML memory-maps weights.
-- Budget against os_proc_available_memory(), not device RAM. A 6GB device gives an app ~3GB, and that API counted down accurately to the kill.
-- Design for 100 seconds, not 10 minutes. Full speed for ~100s, then ~18% slower and flat. Pace long-running features or set expectations.
-- Don't branch on ProcessInfo.thermalState. It reported "serious" at 101s in one run and 347s in another while the actual slowdown happened at the same point both times.
-- Benchmark unplugged. Charging reads ~20% fast; Low Power Mode costs ~56%.
+- **int8, not int4.** Half the size for 0.4 points of WER. int4 halves it again and triples the errors.
+- **Load at launch.** First load after install is ~2s; every launch after is ~135ms.
+- **Ignore file size.** A 39MB model costs 6–9MB of RAM: Core ML mmaps weights.
+- **Budget with os_proc_available_memory().** A 6GB device gives you ~3GB.
+- **You get 100 seconds.** Then 18% slower and flat for the rest of the run.
+- **Don't trust thermalState.** It fired at 101s and 347s while the actual slowdown was at 102s both times.
+- **Unplug before you measure.** Charging reads 20% fast. Low Power Mode costs 56%.
 
 Measured on one model (Whisper-base encoder, ~20M params) on one device. The direction of each finding should generalise, the magnitudes may not.
 

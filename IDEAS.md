@@ -15,3 +15,9 @@ Things I want to add but am not adding before week 7.
   the ANE expand int4 weights to a common working precision, or do some
   layers fall back to GPU? Would turn "int4 buys nothing, probably
   because compute-bound" into a claim with a layer trace behind it.
+
+- Recovery experiment: run Sustained (10 min), stop, wait 5 minutes with
+  the app closed, then run Quick. Does latency return to ~42ms, partially
+  recover, or stay at ~49ms? Ten minutes of work, closes the "until it
+  cools" claim in the README, and answers a question any developer
+  shipping a long-running inference feature will have.

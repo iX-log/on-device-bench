@@ -43,6 +43,10 @@ That hand-off isn't automated yet.
    Each run prints a numeric verification against the PyTorch original
    (max/mean abs diff, max rel diff). This is session 0's method.
 
+   Shortcut: `scripts/fetch-models.sh` downloads the same three
+   `.mlpackage` directories from the project's GitHub release instead of
+   converting them yourself.
+
 2. **Prepare audio fixtures** (Mac). Pulls LibriSpeech test-clean
    utterances from the Hub and runs them through Whisper's feature
    extractor:

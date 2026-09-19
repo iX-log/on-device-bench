@@ -34,7 +34,7 @@ Measured on one model (Whisper-base encoder, ~20M params) on one device. The dir
 | Measurement | Result | Session |
 |---|---|---|
 | Steady-state inference | 43.0ms median, 44.2ms p95 (100 runs) | 6 |
-| Load time, cold vs. warm | 2046ms → 135ms | 2 |
+| Load time, cold vs. warm | 1975ms → 135ms | 2 |
 | Sustained-run behavior | Flat ~41.7ms until ~102s, then a near-vertical step to a ~49ms plateau (a cliff, not a slope) | 8 |
 | Quantization vs. speed | int4 is 4x smaller than fp16 but only ~3% faster (compute-bound, not memory-bound) | 5 |
 | Quantization vs. accuracy | WER 3.4% (fp16) → 3.8% (int8) → 8.8% (int4) | 7 |

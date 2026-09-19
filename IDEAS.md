@@ -10,6 +10,7 @@ Things I want to add but am not adding before week 7.
 
 - Recovery experiment: run Sustained (10 min), stop, wait 5 minutes with
   the app closed, then run Quick. Does latency return to ~42ms, partially
-  recover, or stay at ~49ms? Ten minutes of work, closes the "until it
-  cools" claim in the README, and answers a question any developer
-  shipping a long-running inference feature will have.
+  recover, or stay at ~49ms? Ten minutes of work, settles whether the
+  README's "flat for the rest of the run" claim also holds after a
+  cooldown, and answers a question any developer shipping a
+  long-running inference feature will have.

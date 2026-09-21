@@ -27,8 +27,10 @@ If a fresh install breaks, that version drift is the first thing to check.)
 ## Reproducing
 
 End to end, from a bare checkout to a number in RESULTS.md. Steps 1-3 and
-8-9 are scripted; steps 4-6 happen by hand in Xcode and on the device.
-That hand-off isn't automated yet.
+8-9 are scripted; step 4 is scripted too if you used the `fetch-models.sh`
+shortcut in step 1 (it places the models for Xcode as well as for the
+Python side). Steps 5-6 happen by hand in Xcode and on the device; that
+hand-off isn't automated.
 
 1. **Convert the model** (Mac). Traces the HF Whisper encoder, converts to
    Core ML, and for int8/int4 applies post-training quantization, saving
@@ -45,7 +47,8 @@ That hand-off isn't automated yet.
 
    Shortcut: `scripts/fetch-models.sh` downloads the same three
    `.mlpackage` directories from the project's GitHub release instead of
-   converting them yourself.
+   converting them yourself, and also copies them into
+   `ios/BenchApp/BenchApp/` so Xcode picks them up without step 4 below.
 
 2. **Prepare audio fixtures** (Mac). Pulls LibriSpeech test-clean
    utterances from the Hub and runs them through Whisper's feature
@@ -72,11 +75,18 @@ That hand-off isn't automated yet.
    `.mlpackage` models from step 1, which are gitignored and never
    committed.
 
-4. **Get the model into Xcode (manual, not scriptable).** The three
-   `.mlpackage` directories are gitignored and aren't referenced by path
-   anywhere in the Xcode project. Drag each of
-   `models/whisper-base-encoder-{fp16,int8,int4}.mlpackage` into the
-   BenchApp target in Xcode ("Copy items if needed", add to target).
+4. **Get the model into Xcode.** If you used the `fetch-models.sh`
+   shortcut in step 1, this is already done and you can skip to step 5.
+
+   If you converted locally instead: the three `.mlpackage` directories
+   are gitignored and aren't referenced by path anywhere in the Xcode
+   project. `BenchApp`'s group in Xcode is a file-system-synchronized
+   folder rooted at `ios/BenchApp/BenchApp/` (Xcode 16+), meaning
+   anything placed in that folder on disk is picked up automatically, no
+   explicit "add to target" step required. Copy each of
+   `models/whisper-base-encoder-{fp16,int8,int4}.mlpackage` into
+   `ios/BenchApp/BenchApp/` (Finder, or
+   `cp -R models/whisper-base-encoder-*.mlpackage ios/BenchApp/BenchApp/`).
    Xcode compiles them to `.mlmodelc` and generates the Swift model
    classes (`whisper_base_encoder_fp16`, etc.) that
    `BenchmarkViewModel.swift` calls directly in `loadEncoder(precision:)`.
@@ -84,11 +94,17 @@ That hand-off isn't automated yet.
    runtime.
 
 5. **Build and run on the physical device.** Open
-   `ios/BenchApp/BenchApp.xcodeproj`, select the device (not a
-   simulator) as the run destination, build and run. Then match the
-   standard conditions used for every number in RESULTS.md: airplane
-   mode on, off charger, cooled 5 minutes before the run, launched fresh
-   from the home screen (not resumed from Xcode), no debugger attached.
+   `ios/BenchApp/BenchApp.xcodeproj`. The bundle identifier
+   (`com.ixdev.benchapp`) and signing team are tied to the original
+   author's Apple Developer account, so on anyone else's machine the
+   build will fail to sign. In the target's Signing & Capabilities tab,
+   change the bundle identifier to something unique (e.g.
+   `com.<yourname>.benchapp`) and select your own team, then select the
+   device (not a simulator) as the run destination, build and run. Then
+   match the standard conditions used for every number in RESULTS.md:
+   airplane mode on, off charger, cooled 5 minutes before the run,
+   launched fresh from the home screen (not resumed from Xcode), no
+   debugger attached.
 
 6. **Run the measurement protocol.** Pick a precision and input mode in
    the app, then run in this order. This is the method behind every
@@ -125,8 +141,12 @@ That hand-off isn't automated yet.
    BUNDLE="${BUNDLE:-com.ixdev.benchapp}"
    ```
 
-   Both are overridable via environment variables. Find your device's
-   UDID with `xcrun devicectl list devices` and run:
+   `BUNDLE` must match whatever you set as the bundle identifier in step
+   5, not the default here; if you changed it there and forget to
+   override it here, this script will fail to find the app's data
+   container on the device. Both are overridable via environment
+   variables. Find your device's UDID with `xcrun devicectl list
+   devices` and run:
 
    ```
    DEVICE=<your-udid> BUNDLE=<your-bundle-id> scripts/pull-results.sh

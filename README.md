@@ -47,6 +47,8 @@ Conditions, caveats, and raw data: [RESULTS.md](RESULTS.md).
 
 ![Overlay of two sustained runs showing latency flat at ~41.7ms then stepping near-vertically to a plateau at ~102 seconds on both battery and power](results/charts/sustained_comparison.png)
 
+![Four sustained runs normalised to each run's own first-minute median, plotted as percent slower over 600 seconds. Both iPhone 14 Pro Max (A16) runs step to a roughly 18% plateau within about 110 seconds and hold flat. The iPhone 17 (A19) cooled-start run creeps up smoothly and close to linearly to about 12% with no step anywhere. The iPhone 17 warm-start run creeps far more steeply and noisily, passing both A16 runs and reaching about 46% by the end.](results/charts/cross-device-normalised.png)
+
 ![Bar chart of disk size against a line of aggregate WER across fp16, int8, and int4, showing int8 barely raises error while int4 nearly triples it for a further 2x size reduction](results/charts/quantization-tradeoff.png)
 
 ## Limitations

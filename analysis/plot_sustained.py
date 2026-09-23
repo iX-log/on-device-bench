@@ -2,9 +2,12 @@
 
 Reads every results/device-pull/sustained-*.json and, for each, saves a
 scatter of latency_ms vs elapsed_s with a rolling median overlay and
-vertical lines marking thermal state transitions. Also saves a combined
-chart overlaying the on-power and battery runs (RESULTS.md sessions 3 and
-4) so the difference in thermal onset timing is visible on one axis.
+vertical lines marking thermal state transitions. Also saves two combined
+charts: an overlay of the on-power and battery runs (RESULTS.md sessions 3
+and 4) so the difference in thermal onset timing is visible on one axis,
+and a cross-device chart normalising every run's rolling median to its own
+first-minute baseline (percent slower), so devices with different absolute
+latencies (RESULTS.md sessions 3/4/10) are directly comparable.
 """
 
 import glob
@@ -18,17 +21,39 @@ DEVICE_PULL_DIR = "results/device-pull"
 CHARTS_DIR = "results/charts"
 ROLLING_WINDOW = 101  # samples, centered
 
-# RESULTS.md sessions 3 (on charger) and 4 (on battery) identify these runs
-# by filename. Note: the 'notes' field inside both JSON files says
-# "off power" for both, which contradicts RESULTS.md -- the labels below
-# follow RESULTS.md as the source of truth; flag this if it matters. Both
-# predate schema_version and its structured conditions (see
-# format_conditions below), so this is exactly the kind of asserted-not-read
-# mislabeling that schema 2 exists to catch.
+# RESULTS.md sessions 3 (on charger), 4 (on battery), and 10 (external,
+# iPhone 17) identify these runs by filename. Note: the 'notes' field
+# inside the session 3/4 JSON files says "off power" for both, which
+# contradicts RESULTS.md -- the labels below follow RESULTS.md as the
+# source of truth; flag this if it matters. All four predate
+# schema_version and its structured conditions (see format_conditions
+# below), so this is exactly the kind of asserted-not-read mislabeling
+# that schema 2 exists to catch.
 RUN_LABELS = {
     "sustained-1788785293": "on-power",
     "sustained-1788866056": "battery",
+    "sustained-fp16-1790151796": "cooled start",
+    "sustained-fp16-1790102418": "warm start",
 }
+
+# Every schema-1 file's `device` field is a hardcoded marketing string, not
+# a read value (see format_conditions). The session 3/4 files happen to be
+# correct by coincidence; the session 10 files are not -- both say "iPhone
+# 14 Pro Max" despite being an iPhone 17. This is the corrected label used
+# for chart titles and legends; it does not touch the JSON.
+DEVICE_NAMES = {
+    "sustained-1788785293": "iPhone 14 Pro Max (A16, 6GB)",
+    "sustained-1788866056": "iPhone 14 Pro Max (A16, 6GB)",
+    "sustained-fp16-1790151796": "iPhone 17 (A19)",
+    "sustained-fp16-1790102418": "iPhone 17 (A19)",
+}
+
+# plot_comparison() is specifically the session 3 vs 4 (on-power vs
+# battery, same device) thermal-onset comparison. Scoped explicitly so
+# that adding more sustained-*.json files later (e.g. session 10) doesn't
+# silently pull them into a chart whose title and two-color legend assume
+# exactly these two runs.
+THERMAL_COMPARISON_STEMS = ("sustained-1788785293", "sustained-1788866056")
 
 THERMAL_COLORS = {
     "nominal": "tab:green",
@@ -95,8 +120,10 @@ def plot_single(path, meta, df, out_path):
 
     ax.set_xlabel("elapsed (s)")
     ax.set_ylabel("latency (ms)")
-    label = RUN_LABELS.get(os.path.splitext(os.path.basename(path))[0], "")
-    title = f"{meta['device']} · {meta['model']} · {meta['precision']}"
+    stem = os.path.splitext(os.path.basename(path))[0]
+    label = RUN_LABELS.get(stem, "")
+    device = DEVICE_NAMES.get(stem, meta["device"])
+    title = f"{device} · {meta['model']} · {meta['precision']}"
     if label:
         title += f" ({label})"
     ax.set_title(title)
@@ -131,6 +158,46 @@ def plot_comparison(runs, out_path):
     plt.close(fig)
 
 
+def normalized_series(df):
+    """Rolling median as percent slower than this run's own first-minute
+    median. Returns (pct_series, final_drift_pct), where final_drift_pct
+    compares the last-minute median to the first-minute median -- the
+    same first/last-minute convention RESULTS.md uses everywhere else."""
+    baseline = df.loc[df["elapsed_s"] < 60, "latency_ms"].median()
+    pct = (df["latency_roll"] - baseline) / baseline * 100
+    end = df["elapsed_s"].max()
+    last_minute = df.loc[df["elapsed_s"] >= end - 60, "latency_ms"].median()
+    final_drift = (last_minute - baseline) / baseline * 100
+    return pct, final_drift
+
+
+def plot_normalized_comparison(runs, out_path):
+    """Every run's rolling median normalised to its own first-minute
+    baseline, on one axis, so devices with different absolute latencies
+    (an A16 at ~42ms, an A19 at ~26ms) are directly comparable by shape:
+    the A16's step vs the A19's creep. See DEVICE_NAMES for why device
+    names come from that table rather than the (often mislabeled)
+    `device` field in the raw JSON."""
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    for path, meta, df in runs:
+        stem = os.path.splitext(os.path.basename(path))[0]
+        device = DEVICE_NAMES.get(stem, meta.get("device", stem))
+        tag = RUN_LABELS.get(stem)
+        name = f"{device}, {tag}" if tag else device
+        pct, final_drift = normalized_series(df)
+        ax.plot(df["elapsed_s"], pct, linewidth=1.5, label=f"{name}: {final_drift:+.1f}% final")
+
+    ax.axhline(0, color="gray", linewidth=0.8, linestyle=":")
+    ax.set_xlabel("elapsed (s)")
+    ax.set_ylabel("latency, % slower than own first-minute median")
+    ax.set_title("Sustained-run degradation, normalised across devices")
+    ax.legend(loc="upper left", fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+
 def main():
     os.makedirs(CHARTS_DIR, exist_ok=True)
     paths = sorted(glob.glob(os.path.join(DEVICE_PULL_DIR, "sustained-*.json")))
@@ -148,9 +215,15 @@ def main():
         print(f"  conditions: {format_conditions(meta)}")
         runs.append((path, meta, df))
 
-    if len(runs) >= 2:
+    thermal_runs = [r for r in runs if os.path.splitext(os.path.basename(r[0]))[0] in THERMAL_COMPARISON_STEMS]
+    if len(thermal_runs) >= 2:
         out_path = os.path.join(CHARTS_DIR, "sustained_comparison.png")
-        plot_comparison(runs, out_path)
+        plot_comparison(thermal_runs, out_path)
+        print(f"wrote {out_path}")
+
+    if len(runs) >= 2:
+        out_path = os.path.join(CHARTS_DIR, "cross-device-normalised.png")
+        plot_normalized_comparison(runs, out_path)
         print(f"wrote {out_path}")
 
 

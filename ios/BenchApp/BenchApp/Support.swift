@@ -7,6 +7,7 @@
 
 import Foundation
 import UIKit
+import Network
 
 // MARK: - Memory
 
@@ -46,6 +47,83 @@ extension ProcessInfo.ThermalState {
 	}
 }
 
+extension UIDevice.BatteryState {
+	var name: String {
+		switch self {
+		case .unknown: "unknown"
+		case .unplugged: "unplugged"
+		case .charging: "charging"
+		case .full: "full"
+		@unknown default: "unknown"
+		}
+	}
+}
+
+// MARK: - Device conditions
+
+/// iOS never exposes airplane-mode state to apps. `NWPathMonitor` reporting
+/// no available interface is a proxy for it, not a direct read -- airplane
+/// mode with Wi-Fi switched back on, for instance, would show as available
+/// here.
+enum NetworkCheck {
+	static func anyInterfaceAvailable() async -> Bool {
+		await withCheckedContinuation { continuation in
+			let monitor = NWPathMonitor()
+			let queue = DispatchQueue(label: "on-device-bench.network-check")
+			var resumed = false
+			monitor.pathUpdateHandler = { path in
+				guard !resumed else { return }
+				resumed = true
+				continuation.resume(returning: path.status == .satisfied)
+				monitor.cancel()
+			}
+			monitor.start(queue: queue)
+		}
+	}
+}
+
+/// Everything about the device and its state captured once, at the start of
+/// a run, so RunFile records what was actually true instead of a hardcoded
+/// guess.
+struct DeviceSnapshot: Codable {
+	let device: String
+	let os_version: String
+	let physical_memory_bytes: UInt64
+	let low_power_mode_enabled: Bool
+	let battery_state: String
+	let battery_level: Float
+	let thermal_state_at_start: String
+	let network_available_at_start: Bool
+
+	var isThermalNominal: Bool { thermal_state_at_start == ProcessInfo.ThermalState.nominal.name }
+
+	@MainActor
+	static func capture() async -> DeviceSnapshot {
+		UIDevice.current.isBatteryMonitoringEnabled = true
+		return DeviceSnapshot(
+			device: hardwareIdentifier(),
+			os_version: UIDevice.current.systemVersion,
+			physical_memory_bytes: ProcessInfo.processInfo.physicalMemory,
+			low_power_mode_enabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
+			battery_state: UIDevice.current.batteryState.name,
+			battery_level: UIDevice.current.batteryLevel,
+			thermal_state_at_start: ProcessInfo.processInfo.thermalState.name,
+			network_available_at_start: await NetworkCheck.anyInterfaceAvailable()
+		)
+	}
+
+	/// Raw `utsname().machine` value, e.g. "iPhone17,1" -- deliberately not
+	/// mapped to a marketing name, since that mapping table goes stale with
+	/// every new device Apple ships.
+	private static func hardwareIdentifier() -> String {
+		var info = utsname()
+		uname(&info)
+		return withUnsafePointer(to: &info.machine) {
+			$0.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) }
+		}
+	}
+}
+
 // MARK: - Stats
 
 enum Stats {
@@ -70,27 +148,43 @@ struct Sample: Codable {
 	let footprint_bytes: UInt64
 }
 
+/// schema_version 2: `device`, `notes`, and the standing conditions used to
+/// be string literals asserting what was true rather than reading it. See
+/// `DeviceSnapshot`. Files written before this change have no
+/// `schema_version` key at all -- treat its absence as version 1.
 struct RunFile: Codable {
+	let schema_version: Int
 	let started_at: String
 	let device: String
 	let os_version: String
 	let model: String
 	let precision: String
 	let duration_target_s: Double
-	let notes: String
+	let physical_memory_bytes: UInt64
+	let low_power_mode_enabled: Bool
+	let battery_state: String
+	let battery_level: Float
+	let thermal_state_at_start: String
+	let network_available_at_start: Bool
 	let samples: [Sample]
 }
 
 enum RunWriter {
-	static func write(samples: [Sample], duration: Double, precision: Precision) throws -> URL {
+	static func write(samples: [Sample], duration: Double, precision: Precision, conditions: DeviceSnapshot) throws -> URL {
 		let file = RunFile(
+			schema_version: 2,
 			started_at: ISO8601DateFormatter().string(from: Date()),
-			device: "iPhone 14 Pro Max (A16, 6GB)",
-			os_version: UIDevice.current.systemVersion,
+			device: conditions.device,
+			os_version: conditions.os_version,
 			model: "whisper-base encoder",
 			precision: precision.rawValue,
 			duration_target_s: duration,
-			notes: "airplane mode, off power, screen on min brightness, idle timer disabled",
+			physical_memory_bytes: conditions.physical_memory_bytes,
+			low_power_mode_enabled: conditions.low_power_mode_enabled,
+			battery_state: conditions.battery_state,
+			battery_level: conditions.battery_level,
+			thermal_state_at_start: conditions.thermal_state_at_start,
+			network_available_at_start: conditions.network_available_at_start,
 			samples: samples
 		)
 		let enc = JSONEncoder()
@@ -164,13 +258,16 @@ enum CeilingWriter {
 // MARK: - Summary
 
 enum SustainedSummary {
-	static func text(samples: [Sample], file: String) -> String {
+	static func text(samples: [Sample], file: String, conditions: DeviceSnapshot) -> String {
 		guard let last = samples.last else { return "no samples\n" }
 		let sorted = samples.map(\.latency_ms).sorted()
 		let firstMin = samples.filter { $0.elapsed_s < 60 }.map(\.latency_ms)
 		let lastMin = samples.filter { $0.elapsed_s > last.elapsed_s - 60 }.map(\.latency_ms)
 
 		var out = ""
+		if !conditions.isThermalNominal {
+			out += "⚠️  started at thermalState \"\(conditions.thermal_state_at_start)\" — device wasn't cooled, this run isn't comparable to one that started nominal\n\n"
+		}
 		out += "inferences:    \(samples.count)\n"
 		out += String(format: "elapsed:       %.1f s\n\n", last.elapsed_s)
 		out += String(format: "median all:    %.1f ms\n", Stats.percentile(sorted, 0.50))

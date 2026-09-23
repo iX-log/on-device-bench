@@ -21,7 +21,10 @@ ROLLING_WINDOW = 101  # samples, centered
 # RESULTS.md sessions 3 (on charger) and 4 (on battery) identify these runs
 # by filename. Note: the 'notes' field inside both JSON files says
 # "off power" for both, which contradicts RESULTS.md -- the labels below
-# follow RESULTS.md as the source of truth; flag this if it matters.
+# follow RESULTS.md as the source of truth; flag this if it matters. Both
+# predate schema_version and its structured conditions (see
+# format_conditions below), so this is exactly the kind of asserted-not-read
+# mislabeling that schema 2 exists to catch.
 RUN_LABELS = {
     "sustained-1788785293": "on-power",
     "sustained-1788866056": "battery",
@@ -41,6 +44,27 @@ def load_run(path):
     df = pd.DataFrame(d["samples"])
     df["latency_roll"] = df["latency_ms"].rolling(ROLLING_WINDOW, center=True, min_periods=1).median()
     return d, df
+
+
+def format_conditions(meta):
+    """Files with no `schema_version` key predate it (schema 1): `device`
+    was a hardcoded marketing name and `notes` was free text asserting
+    conditions rather than reading them. Schema 2 replaces `notes` with
+    structured fields captured at run start -- this reads either shape."""
+    version = meta.get("schema_version", 1)
+    if version < 2:
+        return meta.get("notes", "(no notes recorded)")
+
+    level = meta.get("battery_level")
+    level_str = f"{level:.0%}" if isinstance(level, (int, float)) and level >= 0 else "unknown"
+    return (
+        f"device: {meta.get('device')}; "
+        f"low power mode: {meta.get('low_power_mode_enabled')}; "
+        f"battery: {meta.get('battery_state')} ({level_str}); "
+        f"thermal @ start: {meta.get('thermal_state_at_start')}; "
+        f"network available @ start: {meta.get('network_available_at_start')} "
+        f"(proxy for airplane mode -- iOS doesn't expose that state directly)"
+    )
 
 
 def thermal_transitions(df):
@@ -121,6 +145,7 @@ def main():
         out_path = os.path.join(CHARTS_DIR, f"{stem}.png")
         plot_single(path, meta, df, out_path)
         print(f"wrote {out_path}")
+        print(f"  conditions: {format_conditions(meta)}")
         runs.append((path, meta, df))
 
     if len(runs) >= 2:

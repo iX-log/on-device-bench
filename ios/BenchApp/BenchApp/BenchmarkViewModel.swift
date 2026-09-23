@@ -44,6 +44,15 @@ final class BenchmarkViewModel {
 		return "\(url.lastPathComponent) — \(Memory.mb(Self.directorySize(at: url)))"
 	}
 
+	/// Checked synchronously at button-press time, before a sustained run
+	/// starts, so the confirmation prompt can block the run rather than
+	/// just annotate it after the fact.
+	var thermalWarning: String? {
+		let state = ProcessInfo.processInfo.thermalState
+		guard state != .nominal else { return nil }
+		return "Device isn't cooled (thermalState: \(state.name)). This run won't be comparable to one that started nominal."
+	}
+
 	// MARK: - Public API
 
 	func runQuick(iterations: Int = 100) async {
@@ -76,6 +85,8 @@ final class BenchmarkViewModel {
 		UIApplication.shared.isIdleTimerDisabled = true
 		defer { UIApplication.shared.isIdleTimerDisabled = false }
 
+		let conditions = await DeviceSnapshot.capture()
+
 		await guarded {
 			let session = try self.loadModel()
 			self.log = session.header + "sustained run started…\n"
@@ -106,9 +117,9 @@ final class BenchmarkViewModel {
 				}
 			}
 
-			let url = try RunWriter.write(samples: samples, duration: seconds, precision: self.selected)
+			let url = try RunWriter.write(samples: samples, duration: seconds, precision: self.selected, conditions: conditions)
 			self.log = session.header
-				+ SustainedSummary.text(samples: samples, file: url.lastPathComponent)
+				+ SustainedSummary.text(samples: samples, file: url.lastPathComponent, conditions: conditions)
 			self.progress = ""
 		}
 	}

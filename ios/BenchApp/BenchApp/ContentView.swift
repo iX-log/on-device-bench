@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
 	@State private var vm = BenchmarkViewModel()
+	@State private var showThermalConfirm = false
 
 	var body: some View {
 		ScrollView {
@@ -34,10 +35,24 @@ struct ContentView: View {
 
 				HStack(spacing: 16) {
 					Button("Quick (100)") { Task { await vm.runQuick() } }
-					Button("Sustained (10 min)") { Task { await vm.runSustained() } }
+					Button("Sustained (10 min)") {
+						if vm.thermalWarning != nil {
+							showThermalConfirm = true
+						} else {
+							Task { await vm.runSustained() }
+						}
+					}
 					Button("Dump features") { Task { await vm.dumpFeatures() } }
 				}
 				.disabled(vm.isRunning)
+				.confirmationDialog(
+					vm.thermalWarning ?? "",
+					isPresented: $showThermalConfirm,
+					titleVisibility: .visible
+				) {
+					Button("Run anyway", role: .destructive) { Task { await vm.runSustained() } }
+					Button("Cancel", role: .cancel) {}
+				}
 
 				HStack(spacing: 16) {
 					Button("Memory ceiling") { Task { await vm.runMemoryCeiling() } }

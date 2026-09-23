@@ -56,9 +56,11 @@ Conditions, caveats, and raw data: [RESULTS.md](RESULTS.md).
 ## Limitations
 
 - Core ML only, encoder only: no comparison to ONNX Runtime, TFLite, or whisper.cpp, and no end-to-end on-device transcription number (the decoder ran on a Mac CPU throughout).
-- n=2 devices (one A16, one A19), one ~20M-parameter model: unit-to-unit variance within a device, other model architectures, and larger-model behavior are all unmeasured.
-- Most figures are a single session's output, not repeat-checked for run-to-run variance.
-- Raw per-run data is committed only for the four sustained runs (sessions 3, 4, 10). Sessions 1, 2, 5, 6, 7 and 9 exist only as summary statistics, with no underlying distribution to re-derive.
+- n=4 devices (A16, A18 Pro, A19, A19 Pro), all iPhones, one ~20M-parameter model: unit-to-unit variance within a model, iPads, other architectures, and larger-model behavior are all unmeasured. Three of the four were borrowed for a single afternoon and cannot be re-run.
+- Most figures are a single session's output, not repeat-checked for run-to-run variance. The sustained runs on the A18 Pro and A19 Pro are n=1 each.
+- Raw per-run data is committed for the seven sustained runs (sessions 3, 4, 10, 11, 12) and for four memory-ceiling probes (sessions 9, 11, 12). Quick-test figures write no file, so sessions 1, 2, 5, 6 and the precision and Low Power Mode tables in sessions 11 and 12 are evidenced by screenshots in `results/screenshots/` rather than by a distribution you can re-derive.
+- Encoder feature dumps from the borrowed devices are held out of git for size. The comparison results in session 12 are reproducible from the committed September 11 dumps plus a re-run on your own hardware, not from files in this repo.
+- The finding that iOS version changes encoder output is a natural experiment, not a controlled one: four dump sets split cleanly along OS version with no other variable separating them, but nobody changed the OS on a single handset and re-measured.
 
 Everything else, including per-session caveats and what's still
 unexplained, is in [RESULTS.md](RESULTS.md).

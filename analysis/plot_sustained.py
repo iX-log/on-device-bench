@@ -42,8 +42,12 @@ RUN_LABELS = {
 # 14 Pro Max" despite being an iPhone 17. This is the corrected label used
 # for chart titles and legends; it does not touch the JSON.
 DEVICE_NAMES = {
-    "sustained-1788785293": "iPhone 14 Pro Max (A16, 6GB)",
-    "sustained-1788866056": "iPhone 14 Pro Max (A16, 6GB)",
+    # "6GB" removed from these labels: session 12's schema-2 run reads
+    # physical_memory_bytes = 5,911,134,208 (5.505 GiB) from this device.
+    # The 6GB figure was Apple's spec sheet, and session 9's "exactly half
+    # of 6 GiB" rested on it.
+    "sustained-1788785293": "iPhone 14 Pro Max (A16)",
+    "sustained-1788866056": "iPhone 14 Pro Max (A16)",
     "sustained-fp16-1790151796": "iPhone 17 (A19)",
     "sustained-fp16-1790102418": "iPhone 17 (A19)",
     # Not a correction: this file is schema 2 and self-reports correctly.
@@ -51,6 +55,12 @@ DEVICE_NAMES = {
     # Pro and is trivially misread as the iPhone 17 above. Expanded here to
     # the marketing name so the two devices are distinguishable in legends.
     "sustained-fp16-1790161164": "iPhone 16 Pro (A18 Pro)",
+    # Schema-2 files self-report correctly but cryptically. iPhone18,2 is the
+    # iPhone 17 Pro Max and iPhone15,3 is the iPhone 14 Pro Max; neither is
+    # legible in a legend, and iPhone18,2 sits one character from session
+    # 10's iPhone 17 (iPhone18,3).
+    "sustained-fp16-1790174217": "iPhone 17 Pro Max (A19 Pro)",
+    "sustained-fp16-1790178261": "iPhone 14 Pro Max (A16), schema 2",
 }
 
 # plot_comparison() is specifically the session 3 vs 4 (on-power vs

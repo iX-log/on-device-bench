@@ -424,7 +424,8 @@ The app cannot report this itself at the moment of death, which is why progress 
 
 Finding, corrected: the jetsam limit on this device is exactly 3 GiB
 (3,221,225,472 bytes), not "approximately 3060MB". Confirmed from
-`results/device-pull/ceiling-progress.json` (run 3, 95 per-block
+`results/device-pull/ceiling-iphone14promax-a16-20260915.json` (run 3,
+95 per-block
 samples): the app was killed at a 3061.7MB footprint because the next
 32MB block would have crossed that limit, with only 10.3MB of available
 headroom left to absorb it. 3 GiB is exactly half of this device's 6 GiB
@@ -433,6 +434,16 @@ of RAM, not an approximation that happens to land near half — though the
 device, so the "exactly half" relationship depends on that spec sheet
 being accurate (same caveat Session 10 applies to the iPhone 17's 8GB). A
 schema-2 run will capture `physicalMemory` directly and settle it.
+
+Correction (session 11): a schema-2 run now exists, but on a different
+device, and it does not settle "exactly half" in favour of that reading.
+The iPhone 16 Pro reports `physical_memory_bytes` of 8,014,741,504
+(7.4643 GiB, not the 8 GiB of its spec sheet) against a jetsam limit of
+3,539,992,576 bytes, which is 44.2% of it. So "exactly half" is not a
+rule that carries across devices. It also remains unverified for this
+device: the A16 runs predate schema 2 and never captured its physical
+memory. What does carry across is the second finding below. See session
+11.
 
 Second finding, strengthened: `os_proc_available_memory()` is not an
 empirical estimate that happened to be accurate. Across all 95 samples in
@@ -461,7 +472,8 @@ untested. This is an open question, not an estimate.
 Note: 3040MB allocated vs. 3061.7MB footprint. The ~21MB gap is the app
 itself plus allocator overhead.
 
-Data note: `results/device-pull/ceiling-progress.json` backs run 3 only.
+Data note: `results/device-pull/ceiling-iphone14promax-a16-20260915.json`
+backs run 3 only.
 The progress file was cleared before each run, so runs 1 and 2 have no
 committed per-block data: they're evidenced by the screenshots above, not
 by a raw file. Run 3's 95-block allocation completed in 0.48 seconds.

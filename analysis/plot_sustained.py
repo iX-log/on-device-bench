@@ -46,6 +46,11 @@ DEVICE_NAMES = {
     "sustained-1788866056": "iPhone 14 Pro Max (A16, 6GB)",
     "sustained-fp16-1790151796": "iPhone 17 (A19)",
     "sustained-fp16-1790102418": "iPhone 17 (A19)",
+    # Not a correction: this file is schema 2 and self-reports correctly.
+    # It reports the model identifier "iPhone17,1", which is the iPhone 16
+    # Pro and is trivially misread as the iPhone 17 above. Expanded here to
+    # the marketing name so the two devices are distinguishable in legends.
+    "sustained-fp16-1790161164": "iPhone 16 Pro (A18 Pro)",
 }
 
 # plot_comparison() is specifically the session 3 vs 4 (on-power vs

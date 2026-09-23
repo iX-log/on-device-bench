@@ -15,3 +15,8 @@ CFP.md
 NOTES.md
 WRITING.md
 results/device-pull/ceiling-progress.json
+
+# A18 Pro encoder feature dumps (session 11), 62MB, held out of git until
+# the A16 control run decides whether they back a finding. If they do, they
+# belong in a release asset alongside the models, not in the repository.
+results/device-pull/iphone16pro-a18pro/

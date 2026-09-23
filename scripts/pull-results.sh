@@ -12,7 +12,7 @@ xcrun devicectl device copy from \
   --device "$DEVICE" \
   --domain-type appDataContainer \
   --domain-identifier "$BUNDLE" \
-  --username mobile \
+  --user mobile \
   --source Documents \
   --destination "$DEST"
 

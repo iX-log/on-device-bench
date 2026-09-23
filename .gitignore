@@ -4,6 +4,7 @@ models/
 *.mlpackage
 data/
 .DS_Store
+.vscode/
 
 # Xcode
 xcuserdata/

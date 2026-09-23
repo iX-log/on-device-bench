@@ -1,5 +1,5 @@
 # Parked
-Things I want to add but am not adding before week 7.
+Parked experiments, not scheduled work.
 
 - Run the Core ML Instruments template on all three precisions (fp16,
   int8, int4) to get per-layer timing and which compute unit each

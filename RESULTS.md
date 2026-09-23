@@ -418,14 +418,24 @@ after each block since jetsam kills the process without warning.
 
 The app cannot report this itself at the moment of death, which is why progress is flushed to disk after every block.
 
-Finding: the jetsam ceiling on a 6GB A16 is approximately 3060MB, half
-the device RAM, not most of it. Three runs agreed to within 0.1MB, so
-this is a fixed budget rather than something that drifts with system
-pressure.
+Finding, corrected: the jetsam limit on this device is exactly 3 GiB
+(3,221,225,472 bytes), not "approximately 3060MB". Confirmed from
+`results/device-pull/ceiling-progress.json` (run 3, 95 per-block
+samples): the app was killed at a 3061.7MB footprint because the next
+32MB block would have crossed that limit, with only 10.3MB of available
+headroom left to absorb it. 3 GiB is exactly half of this device's 6 GiB
+of RAM, not an approximation that happens to land near half.
 
-Second finding: `os_proc_available_memory()` is reliable. It counted down
-to ~10MB and the kill landed there, with no phantom headroom reported.
-Apps can budget against it directly.
+Second finding, strengthened: `os_proc_available_memory()` is not an
+empirical estimate that happened to be accurate. Across all 95 samples in
+run 3's raw data, `phys_footprint_bytes + available_bytes` equals
+3,221,225,472 exactly, with zero variation. The call returns the fixed
+limit minus the current footprint arithmetically, not a measured or
+inferred figure. Apps can budget against it directly.
+
+Note: this also explains why the three runs agreed to within 0.1MB: they
+were all measuring a fixed constant, not a noisy quantity that happened
+to converge.
 
 Practical implication: with the whisper-base encoder fp16 costing ~8MB of
 footprint (session 2), there is substantial headroom under this ceiling.
@@ -435,11 +445,18 @@ right at the limit.
 Note: 3040MB allocated vs. 3061.7MB footprint. The ~21MB gap is the app
 itself plus allocator overhead.
 
+Data note: `results/device-pull/ceiling-progress.json` backs run 3 only.
+The progress file was cleared before each run, so runs 1 and 2 have no
+committed per-block data, only the summary figures in the table above.
+Run 3's 95-block allocation completed in 0.48 seconds.
+
 Caveat: this measures a foreground app aggressively allocating with
-nothing else running and no response to memory warnings. Jetsam
-prioritizes differently for apps that release memory under pressure, and
-under system-wide memory pressure from other apps. Treat 3060MB as an
-optimistic upper bound, not a guaranteed budget.
+nothing else running and no response to memory warnings. The limit
+itself is exact, but whether a real app gets the full 3 GiB under
+system-wide memory pressure is untested. Jetsam prioritizes differently
+for apps that release memory under pressure, and under system-wide
+memory pressure from other apps. Treat the full 3 GiB as an optimistic
+upper bound, not a guaranteed budget.
 
 ## Session 10: first external cross-device data (iPhone 17)
 

@@ -23,11 +23,12 @@ example.
 - **Load at launch.** First load after install is ~2s; every launch after is ~135ms.
 - **Ignore file size.** A 39MB model costs 6–9MB of RAM: Core ML mmaps weights.
 - **Budget with os_proc_available_memory().** A 6GB device gives you ~3GB.
-- **You get 100 seconds.** Then 18% slower and flat for the rest of the run.
+- **Sustained degradation is device-specific.** The A16 holds flat then steps at ~102s; the A19 creeps smoothly for the whole run instead. Measure the device you're shipping to, don't extrapolate.
+- **Cooldown matters more than silicon.** +12.2% drift cooled vs. +46.1% warm on the same device: a bigger swing than two chip generations.
 - **Don't trust thermalState.** It fired at 101s and 347s while the actual slowdown was at 102s both times.
 - **Unplug before you measure.** Charging reads 20% fast. Low Power Mode costs 56%.
 
-Measured on one model (Whisper-base encoder, ~20M params) on one device. The direction of each finding should generalise, the magnitudes may not.
+Measured on one model (Whisper-base encoder, ~20M params) across two devices (A16, A19). Direction should generalise further and magnitudes may not, except sustained-run shape: that's device-specific, not just its size.
 
 ## Key Findings
 
@@ -35,7 +36,7 @@ Measured on one model (Whisper-base encoder, ~20M params) on one device. The dir
 |---|---|---|
 | Steady-state inference | 43.0ms median, 44.2ms p95 (100 runs) | 6 |
 | Load time, cold vs. warm | 1975ms → 135ms | 2 |
-| Sustained-run behavior | Flat ~41.7ms until ~102s, then a near-vertical step to a ~49ms plateau (a cliff, not a slope) | 8 |
+| Sustained-run behavior | Device-specific: A16 flat ~41.7ms then a near-vertical step at ~102s to a ~49ms plateau; A19 a smooth monotonic creep, no step at all | 8, 10 |
 | Quantization vs. speed | int4 is 4x smaller than fp16 but only ~3% faster (compute-bound, not memory-bound) | 5 |
 | Quantization vs. accuracy | WER 3.4% (fp16) → 3.8% (int8) → 8.8% (int4) | 7 |
 | Memory ceiling before jetsam kill | ~3060MB on a 6GB device (half of RAM, not most of it) | 9 |
@@ -51,7 +52,7 @@ Conditions, caveats, and raw data: [RESULTS.md](RESULTS.md).
 ## Limitations
 
 - Core ML only, encoder only: no comparison to ONNX Runtime, TFLite, or whisper.cpp, and no end-to-end on-device transcription number (the decoder ran on a Mac CPU throughout).
-- n=1 device, one ~20M-parameter model: unit-to-unit variance, other model architectures, and larger-model behavior are all unmeasured.
+- n=2 devices (one A16, one A19), one ~20M-parameter model: unit-to-unit variance within a device, other model architectures, and larger-model behavior are all unmeasured.
 - Most figures are a single session's output, not repeat-checked for run-to-run variance.
 
 Everything else, including per-session caveats and what's still
@@ -71,8 +72,9 @@ cite this repo if you use the numbers.
 
 Ixhen Hasani, [ix-dev.com](https://ix-dev.com)
 
-Cross-device data is this project's biggest gap: everything here is one
-iPhone 14 Pro Max (A16, 6GB). If a number here doesn't reproduce on your
-own run, or you run this on other hardware (an A17 or A18 result would
-be genuinely useful), please open an issue with your conditions and
-output.
+Cross-device data is still this project's biggest gap. This repo now
+covers two devices: one iPhone 14 Pro Max (A16, 6GB), and one iPhone 17
+(A19, 8GB) contributed by a tester. An A17 or A18 result would fill the
+gap between them. If a number here doesn't reproduce on your own run, or
+you run this on other hardware, please open an issue with your
+conditions and output.

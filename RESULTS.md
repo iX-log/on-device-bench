@@ -27,6 +27,19 @@ thermal state. No session checks `thermalState` or device temperature
 before starting a run, so a run could begin already partway into a
 non-nominal state without anything here catching it.
 
+Caveat: raw JSON written before `schema_version` 2 (no `schema_version`
+key at all; see `RunFile` in `ios/BenchApp/BenchApp/Support.swift`) has
+its `device` field and standing-conditions `notes` hardcoded as string
+literals in the app, not read from the device at runtime. The two raw
+`results/device-pull/*.json` files behind this document (sessions 3 and
+4) predate that change. Both happen to have actually run on the iPhone
+14 Pro Max named above, so their device label is correct by
+coincidence, not verification, and their "airplane mode" note is an
+assertion baked into that build, not a measurement. Any other
+pre-`schema_version`-2 run, from any tester or device, would carry the
+same hardcoded label and claim regardless of what was actually running
+or what radios were on.
+
 ## Session 0: Core ML conversion
 
 Converted the whisper-base encoder to Core ML fp16 on a MacBook M4 via
@@ -383,6 +396,12 @@ Secondary observations:
   as dense bands of consecutive slow runs, not isolated outliers, i.e.
   sustained sub-plateaus, not noise.
 
+Correction (session 10): "a cliff, not a slope" is an A16 result, not a
+general property of thermal throttling on iOS. Session 10's cross-device
+data (iPhone 17, A19) shows a smooth, monotonic creep under the same
+protocol, with no step at all. Read this session's finding as specific
+to the device it was measured on.
+
 ## Session 9: memory ceiling probe
 
 iPhone 14 Pro Max (A16, 6GB), iOS 27.0. Airplane mode, off power, all
@@ -421,3 +440,96 @@ nothing else running and no response to memory warnings. Jetsam
 prioritizes differently for apps that release memory under pressure, and
 under system-wide memory pressure from other apps. Treat 3060MB as an
 optimistic upper bound, not a guaranteed budget.
+
+## Session 10: first external cross-device data (iPhone 17)
+
+Contributed by a tester on an iPhone 17, A19, 8GB RAM (per Apple's spec
+sheet, not read from the device), iOS 27.0. Two sustained runs,
+whisper-base encoder fp16, 600s each. Deviates from standard conditions:
+different tester, different hardware, and network state was not
+deliberately controlled (see caveats).
+
+### Run A: cooled start
+
+21,295 inferences over 600s, synthetic input. Started 2026-09-23T08:23:16Z.
+Raw data: `results/device-pull/sustained-fp16-1790151796.json`. Screenshot
+of the on-screen summary: `results/screenshots/iphone17-run-a-summary.jpg`.
+
+| Metric | Value |
+|---|---|
+| Load | 1510.4 ms (cold) |
+| Available before load | 3363.5 MB |
+| Model cost | 10.9 MB |
+| Median (all runs) | 28.3 ms |
+| p95 (all runs) | 30.2 ms |
+| First-minute median | 26.11 ms |
+| Last-minute median | 29.29 ms |
+| Drift | +3.18 ms (+12.2%) |
+
+| State | Onset |
+|---|---|
+| Nominal | at run start |
+| Fair | 215.0 s |
+| Serious | not reached |
+
+### Run B: warm start
+
+18,585 inferences over 600s. Started 2026-09-22T18:40:18Z, the evening
+before run A. Raw data:
+`results/device-pull/sustained-fp16-1790102418.json`.
+
+| Metric | Value |
+|---|---|
+| Median (all runs) | 32.25 ms |
+| p95 (all runs) | 38.87 ms |
+| First-minute median | 26.61 ms |
+| Last-minute median | 38.88 ms |
+| Drift | +12.27 ms (+46.1%) |
+
+Median and p95 computed from the raw samples here, the same way as
+every other session (run 1 discarded as warm-up, per session 1's
+convention); no on-screen summary or screenshot exists for this run, so
+input mode (synthetic vs. real) and load time are unknown.
+
+| State | Onset |
+|---|---|
+| Fair | at run start |
+| Serious | 255.8 s |
+
+Finding 1, revising session 8: the degradation shape is device-specific,
+not just its magnitude. On the A16, latency holds flat and then steps
+near-vertically at ~102s: session 8's "a cliff, not a slope." On the
+A19, there is no step at all, a smooth, monotonic creep across the full
+ten minutes. Session 8's finding is an A16 result and does not
+generalise to other silicon.
+
+Finding 2: starting thermal state moved the result nearly 4x on the same
+device in the same day: +12.2% cooled (run A) versus +46.1% warm (run
+B). That's a larger effect than the two-generation silicon gap between
+the A16 and the A19. The five-minute cooldown in the standard conditions
+is load-bearing, not hygiene.
+
+Observation, untested: run A's on-screen summary (not the JSON, which
+has no memory field) reported 3363.5MB available before load on the
+iPhone 17, against session 9's ~3060MB jetsam ceiling on the 6GB A16. If
+the 17 has 8GB, the jetsam ceiling is not scaling linearly with device
+RAM: roughly +10% headroom for +33% more RAM. No ceiling probe (session
+9's method) was run on this device, and "available before load" is not
+the same measurement as session 9's "footprint at kill," so this is a
+single unverified reading, not a measurement comparable to session 9.
+
+Caveats:
+
+- Both raw files are schema 1 (no `schema_version` key; see the
+  schema-version caveat under Standard conditions above), so their
+  `device` field reads "iPhone 14 Pro Max" and `notes` claims airplane
+  mode. Neither is accurate. The device is known directly from the
+  tester, not the file, and a screenshot of run A shows cellular and
+  WiFi active, so airplane mode was off during that run. Neither run is
+  a controlled isolation of the network variable, and run B's radio
+  state is known only from the tester's report.
+- Chip and RAM for the iPhone 17 are from Apple's public spec sheet, not
+  read from the device.
+- One tester, one device, two runs. This establishes that the cliff
+  shape in session 8 is not universal; it does not establish what the
+  A19's degradation curve looks like in general.

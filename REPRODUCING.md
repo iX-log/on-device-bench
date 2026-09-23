@@ -118,7 +118,10 @@ hand-off isn't automated.
    3. **Sustained (10 min)** runs continuously for 600s, sampling
       latency and `thermalState` throughout, and writes a JSON file to
       the app's Documents directory. This is what produced the cliff
-      chart in sessions 3, 4, and 8.
+      chart in sessions 3, 4, and 8. If the device isn't in a nominal
+      thermal state when you start it, the app now warns and asks for
+      confirmation before proceeding, so expect that prompt rather than
+      treating it as a bug.
    4. **Dump features** runs the packed 30s windows through the encoder
       and writes each output tensor to Documents as
       `window-N-{precision}.bin`. Session 7 used this for WER scoring

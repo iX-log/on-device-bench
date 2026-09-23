@@ -414,7 +414,11 @@ after each block since jetsam kills the process without warning.
 | 2 | 95 | 3040.0 MB | 3061.7 MB | 10.3 MB |
 | 3 | 95 | 3040.0 MB | 3061.7 MB | 10.3 MB |
 
-![The app relaunched after jetsam killed it, displaying the last fsync'd state: 95 blocks, 3040MB allocated, 3061.7MB footprint, 10.3MB available](results/screenshots/memory-ceiling-after-kill.png)
+![The app relaunched after jetsam killed it, displaying the last fsync'd state for run 1: 95 blocks, 3040MB allocated, 3061.6MB footprint, 10.4MB available](results/screenshots/memory-ceiling-run1.png)
+
+![The app relaunched after jetsam killed it, displaying the last fsync'd state for run 2: 95 blocks, 3040MB allocated, 3061.7MB footprint, 10.3MB available](results/screenshots/memory-ceiling-run2.png)
+
+![The app relaunched after jetsam killed it, displaying the last fsync'd state for run 3: 95 blocks, 3040MB allocated, 3061.7MB footprint, 10.3MB available](results/screenshots/memory-ceiling-run3.png)
 
 The app cannot report this itself at the moment of death, which is why progress is flushed to disk after every block.
 
@@ -424,7 +428,11 @@ Finding, corrected: the jetsam limit on this device is exactly 3 GiB
 samples): the app was killed at a 3061.7MB footprint because the next
 32MB block would have crossed that limit, with only 10.3MB of available
 headroom left to absorb it. 3 GiB is exactly half of this device's 6 GiB
-of RAM, not an approximation that happens to land near half.
+of RAM, not an approximation that happens to land near half — though the
+6GB figure itself is from Apple's public spec sheet, not read from the
+device, so the "exactly half" relationship depends on that spec sheet
+being accurate (same caveat Session 10 applies to the iPhone 17's 8GB). A
+schema-2 run will capture `physicalMemory` directly and settle it.
 
 Second finding, strengthened: `os_proc_available_memory()` is not an
 empirical estimate that happened to be accurate. Across all 95 samples in
@@ -439,16 +447,24 @@ to converge.
 
 Practical implication: with the whisper-base encoder fp16 costing ~8MB of
 footprint (session 2), there is substantial headroom under this ceiling.
-A 3B-parameter model at int8 would be roughly 3GB of weights and would sit
-right at the limit.
+
+Open question: a 3B-parameter model at int8 would be about 2.79 GiB of
+weights (3,000,000,000 bytes), against a 3 GiB limit. If footprint
+scaled with weight size, that would not fit. But Session 2 shows
+footprint does not track weight size this way: a 39MB `.mlpackage` costs
+only 6-9MB of footprint at load because Core ML memory-maps weights
+rather than copying them into resident memory. Whether that same
+mmap-driven gap holds at 3B-parameter scale, or whether a model that
+large needs enough of its weights resident at once to erase the gap, is
+untested. This is an open question, not an estimate.
 
 Note: 3040MB allocated vs. 3061.7MB footprint. The ~21MB gap is the app
 itself plus allocator overhead.
 
 Data note: `results/device-pull/ceiling-progress.json` backs run 3 only.
 The progress file was cleared before each run, so runs 1 and 2 have no
-committed per-block data, only the summary figures in the table above.
-Run 3's 95-block allocation completed in 0.48 seconds.
+committed per-block data: they're evidenced by the screenshots above, not
+by a raw file. Run 3's 95-block allocation completed in 0.48 seconds.
 
 Caveat: this measures a foreground app aggressively allocating with
 nothing else running and no response to memory warnings. The limit
